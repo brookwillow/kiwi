@@ -231,6 +231,17 @@ class ASRModuleAdapter(IASRModule):
         print(f"🎙️  ASR: 开始识别 (第 {self._recognitions} 次)...")
         print(f"{'='*60}")
         
+        # 发送ASR开始识别事件
+        try:
+            start_event = Event.create(
+                event_type=EventType.ASR_RECOGNITION_START,
+                source=self.name
+            )
+            self._controller.publish_event(start_event)
+            print(f"📤 [ASR] 已发送 ASR_RECOGNITION_START 事件")
+        except Exception as e:
+            print(f"❌ [ASR] 发送ASR_RECOGNITION_START事件失败: {e}")
+        
         self._current_task = self._executor.submit(self._recognize_and_publish, audio_data)
     
     def _recognize_and_publish(self, audio_data: Any):

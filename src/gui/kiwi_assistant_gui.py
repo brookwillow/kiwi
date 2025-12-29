@@ -13,8 +13,8 @@ from PyQt5.QtWidgets import (
     QHBoxLayout, QPushButton, QLabel, QComboBox, QTextEdit,
     QGroupBox, QCheckBox
 )
-from PyQt5.QtCore import QTimer, Qt
-from PyQt5.QtGui import QFont
+from PyQt5.QtCore import QTimer, Qt, QPropertyAnimation, QEasingCurve, pyqtProperty
+from PyQt5.QtGui import QFont, QColor
 
 from src.core.controller import SystemController
 from src.adapters import (
@@ -24,6 +24,8 @@ from src.adapters import (
     ASRModuleAdapter,
     GUIModuleAdapter
 )
+from src.adapters.orchestrator_adapter import OrchestratorModuleAdapter
+from src.modules.agents_module import AgentsModule
 from src.audio import AudioConfig, AudioRecorder
 from src.wakeword import WakeWordConfig
 from src.vad import VADConfig
@@ -72,7 +74,7 @@ class KiwiVoiceAssistantGUI(QWidget):
     def init_ui(self):
         """初始化UI组件"""
         self.setWindowTitle("🥝 Kiwi 智能语音助手")
-        self.resize(1200, 900)
+        self.resize(1400, 900)
         
         # 主布局
         main_layout = QVBoxLayout()
@@ -83,31 +85,57 @@ class KiwiVoiceAssistantGUI(QWidget):
         title.setAlignment(Qt.AlignCenter)
         main_layout.addWidget(title)
         
-        # 控制面板
-        control_layout = self.create_control_panel()
-        main_layout.addLayout(control_layout)
+        # 系统状态和工作状态的容器
+        status_container = QHBoxLayout()
         
-        # 状态显示
-        self.status_label = QLabel("Status: ready")
-        self.status_label.setFont(QFont("Arial", 14))
-        self.status_label.setStyleSheet("padding: 10px; background-color: #f0f0f0; border-radius: 5px;")
-        main_layout.addWidget(self.status_label)
+        # 系统运行状态指示器（左侧）
+        self.system_status_label = QLabel("⚫ 系统未启动")
+        self.system_status_label.setFont(QFont("Arial", 12, QFont.Bold))
+        self.system_status_label.setAlignment(Qt.AlignCenter)
+        self.system_status_label.setStyleSheet("""
+            QLabel {
+                padding: 10px 20px;
+                background-color: #757575;
+                color: white;
+                border-radius: 8px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+        """)
+        status_container.addWidget(self.system_status_label, stretch=1)
         
-        # 波形显示（增大显示区域）
-        self.waveform_plot = self.create_waveform_plot()
-        main_layout.addWidget(self.waveform_plot)
+        # 工作状态显示（右侧，美化版）
+        self.status_label = QLabel("💤 系统就绪")
+        self.status_label.setFont(QFont("Arial", 18, QFont.Bold))
+        self.status_label.setAlignment(Qt.AlignCenter)
+        self.status_label.setStyleSheet("""
+            QLabel {
+                padding: 20px;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #e8f5e9, stop:1 #c8e6c9);
+                color: #2e7d32;
+                border-radius: 10px;
+                border: 2px solid #81c784;
+                font-size: 18px;
+                font-weight: bold;
+            }
+        """)
+        status_container.addWidget(self.status_label, stretch=3)
         
-        # 频谱显示（新增）
-        self.spectrum_plot = self.create_spectrum_plot()
-        main_layout.addWidget(self.spectrum_plot)
+        main_layout.addLayout(status_container)
         
-        # VAD状态
-        self.vad_plot = self.create_vad_plot()
-        main_layout.addWidget(self.vad_plot)
+        # 创建左右分栏布局
+        content_layout = QHBoxLayout()
         
-        # ASR结果
-        asr_group = self.create_asr_panel()
-        main_layout.addWidget(asr_group)
+        # 左侧：音频可视化面板
+        left_panel = self.create_left_panel()
+        content_layout.addWidget(left_panel, stretch=1)
+        
+        # 右侧：Orchestrator决策结果面板
+        right_panel = self.create_right_panel()
+        content_layout.addWidget(right_panel, stretch=1)
+        
+        main_layout.addLayout(content_layout)
         
         # 统计信息
         self.stats_label = QLabel("统计信息: --")
@@ -115,7 +143,103 @@ class KiwiVoiceAssistantGUI(QWidget):
         self.stats_label.setStyleSheet("padding: 5px; background-color: #f9f9f9;")
         main_layout.addWidget(self.stats_label)
         
+        # 控制面板（移到最下方）
+        control_layout = self.create_control_panel()
+        main_layout.addLayout(control_layout)
+        
         self.setLayout(main_layout)
+    
+    def create_left_panel(self) -> QGroupBox:
+        """创建左侧音频可视化面板"""
+        group = QGroupBox("音频可视化")
+        group.setFont(QFont("Arial", 12, QFont.Bold))
+        
+        layout = QVBoxLayout()
+        
+        # 波形显示
+        self.waveform_plot = self.create_waveform_plot()
+        layout.addWidget(self.waveform_plot)
+        
+        # 频谱显示
+        self.spectrum_plot = self.create_spectrum_plot()
+        layout.addWidget(self.spectrum_plot)
+        
+        # VAD状态
+        self.vad_plot = self.create_vad_plot()
+        layout.addWidget(self.vad_plot)
+        
+        # ASR结果（简化版）
+        asr_group = self.create_asr_panel()
+        layout.addWidget(asr_group)
+        
+        group.setLayout(layout)
+        return group
+    
+    def create_right_panel(self) -> QGroupBox:
+        """创建右侧Orchestrator决策结果面板"""
+        group = QGroupBox("🤖 AI决策中心")
+        group.setFont(QFont("Arial", 12, QFont.Bold))
+        
+        layout = QVBoxLayout()
+        
+        # 当前选中的Agent
+        agent_label = QLabel("当前选中Agent:")
+        agent_label.setFont(QFont("Arial", 11, QFont.Bold))
+        layout.addWidget(agent_label)
+        
+        self.selected_agent_label = QLabel("--")
+        self.selected_agent_label.setFont(QFont("Arial", 16, QFont.Bold))
+        self.selected_agent_label.setStyleSheet("""
+            padding: 15px;
+            background-color: #e3f2fd;
+            border: 2px solid #2196F3;
+            border-radius: 8px;
+            color: #1976D2;
+        """)
+        self.selected_agent_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.selected_agent_label)
+        
+        # 置信度显示
+        confidence_label = QLabel("置信度:")
+        confidence_label.setFont(QFont("Arial", 11))
+        layout.addWidget(confidence_label)
+        
+        self.confidence_label = QLabel("--")
+        self.confidence_label.setFont(QFont("Arial", 14))
+        self.confidence_label.setStyleSheet("padding: 10px; background-color: #f5f5f5; border-radius: 5px;")
+        layout.addWidget(self.confidence_label)
+        
+        # 决策理由
+        reasoning_label = QLabel("决策理由:")
+        reasoning_label.setFont(QFont("Arial", 11))
+        layout.addWidget(reasoning_label)
+        
+        self.reasoning_text = QTextEdit()
+        self.reasoning_text.setReadOnly(True)
+        self.reasoning_text.setFont(QFont("Arial", 11))
+        self.reasoning_text.setPlaceholderText("决策理由将显示在这里...")
+        self.reasoning_text.setMaximumHeight(150)
+        layout.addWidget(self.reasoning_text)
+        
+        # 用户查询历史
+        history_label = QLabel("查询历史:")
+        history_label.setFont(QFont("Arial", 11))
+        layout.addWidget(history_label)
+        
+        self.query_history_text = QTextEdit()
+        self.query_history_text.setReadOnly(True)
+        self.query_history_text.setFont(QFont("Courier", 10))
+        self.query_history_text.setPlaceholderText("查询历史将显示在这里...")
+        layout.addWidget(self.query_history_text)
+        
+        # Orchestrator统计
+        self.orchestrator_stats_label = QLabel("Orchestrator统计: --")
+        self.orchestrator_stats_label.setFont(QFont("Courier", 9))
+        self.orchestrator_stats_label.setStyleSheet("padding: 5px; background-color: #fafafa;")
+        layout.addWidget(self.orchestrator_stats_label)
+        
+        group.setLayout(layout)
+        return group
     
     def create_control_panel(self) -> QHBoxLayout:
         """创建控制面板"""
@@ -280,14 +404,31 @@ class KiwiVoiceAssistantGUI(QWidget):
             self.asr_adapter = ASRModuleAdapter(self.controller, asr_config)
             self.controller.register_module(self.asr_adapter)
             
-            # 4. 创建并注册GUI适配器
+            # 4. 创建并注册Agents模块
+            self.agents_module = AgentsModule(config_path="config/agents_config.yaml")
+            self.controller.register_module(self.agents_module)
+            
+            # 5. 创建并注册Orchestrator模块
+            # 从环境变量或配置读取API Key
+            import os
+            api_key = os.getenv("DASHSCOPE_API_KEY")
+            use_mock = config.orchestrator.settings.get('use_mock_llm', True)
+            
+            self.orchestrator_adapter = OrchestratorModuleAdapter(
+                self.controller,
+                llm_api_key=api_key,
+                use_mock_llm=use_mock
+            )
+            self.controller.register_module(self.orchestrator_adapter)
+            
+            # 6. 创建并注册GUI适配器
             self.gui_adapter = GUIModuleAdapter(self.controller)
             self.controller.register_module(self.gui_adapter)
             
-            # 5. 连接GUI信号处理器
+            # 7. 连接GUI信号处理器
             self.connect_gui_signals()
             
-            # 6. 创建状态机配置
+            # 8. 创建状态机配置
             from src.state_machine import StateConfig
             state_config = StateConfig(
                 enable_wakeword=True,
@@ -298,15 +439,15 @@ class KiwiVoiceAssistantGUI(QWidget):
                 debug=False
             )
             
-            # 7. 初始化所有模块
+            # 9. 初始化所有模块
             if not self.controller.initialize_all(state_config):
                 raise Exception("模块初始化失败")
             
-            # 8. 启动所有模块
+            # 10. 启动所有模块
             if not self.controller.start_all():
                 raise Exception("模块启动失败")
             
-            # 9. 更新UI状态
+            # 11. 更新UI状态
             self.is_running = True
             self.start_btn.setText("⏸️ 停止系统")
             self.start_btn.setStyleSheet("""
@@ -322,7 +463,25 @@ class KiwiVoiceAssistantGUI(QWidget):
                     background-color: #da190b;
                 }
             """)
-            self.status_label.setText("Status: ready")
+            
+            # 更新系统状态指示器为运行中
+            self.system_status_label.setText("🟢 系统运行中")
+            self.system_status_label.setStyleSheet("""
+                QLabel {
+                    padding: 10px 20px;
+                    background-color: #4CAF50;
+                    color: white;
+                    border-radius: 8px;
+                    font-size: 12px;
+                    font-weight: bold;
+                }
+            """)
+            
+            # 更新工作状态
+            self.update_status_display(
+                'ready', '💤', '系统就绪',
+                '#e8f5e9', '#c8e6c9', '#81c784'
+            )
             
             # 9. 启动显示更新定时器
             self.display_timer.start()
@@ -371,7 +530,34 @@ class KiwiVoiceAssistantGUI(QWidget):
                     background-color: #45a049;
                 }
             """)
-            self.status_label.setText("Status: ready")
+            
+            # 更新系统状态指示器为未启动
+            self.system_status_label.setText("⚫ 系统未启动")
+            self.system_status_label.setStyleSheet("""
+                QLabel {
+                    padding: 10px 20px;
+                    background-color: #757575;
+                    color: white;
+                    border-radius: 8px;
+                    font-size: 12px;
+                    font-weight: bold;
+                }
+            """)
+            
+            # 更新工作状态
+            self.status_label.setText("💤 系统就绪")
+            self.status_label.setStyleSheet("""
+                QLabel {
+                    padding: 20px;
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #e8f5e9, stop:1 #c8e6c9);
+                    color: #2e7d32;
+                    border-radius: 10px;
+                    border: 2px solid #81c784;
+                    font-size: 18px;
+                    font-weight: bold;
+                }
+            """)
             
             print("✅ 系统已停止")
             print("="*60 + "\n")
@@ -404,10 +590,38 @@ class KiwiVoiceAssistantGUI(QWidget):
         self.gui_adapter.connect_wakeword_handler(self.on_wakeword_detected)
         self.gui_adapter.connect_vad_start_handler(self.on_vad_speech_start)
         self.gui_adapter.connect_vad_end_handler(self.on_vad_speech_end)
+        self.gui_adapter.connect_asr_start_handler(self.on_asr_start)
         self.gui_adapter.connect_asr_result_handler(self.on_asr_result)
         self.gui_adapter.connect_asr_error_handler(self.on_asr_error)
         self.gui_adapter.connect_state_changed_handler(self.on_state_changed)
         self.gui_adapter.connect_audio_frame_handler(self.on_audio_frame)
+        self.gui_adapter.connect_orchestrator_decision_handler(self.on_orchestrator_decision)
+    
+    def update_status_display(self, status: str, icon: str, text: str, color_start: str, color_end: str, border_color: str):
+        """
+        更新状态显示的样式
+        
+        Args:
+            status: 状态标识
+            icon: 状态图标
+            text: 显示文本
+            color_start: 渐变起始颜色
+            color_end: 渐变结束颜色
+            border_color: 边框颜色
+        """
+        self.status_label.setText(f"{icon} {text}")
+        self.status_label.setStyleSheet(f"""
+            QLabel {{
+                padding: 20px;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {color_start}, stop:1 {color_end});
+                color: #1a1a1a;
+                border-radius: 10px;
+                border: 3px solid {border_color};
+                font-size: 18px;
+                font-weight: bold;
+            }}
+        """)
     
     # ==================== 事件处理器 ====================
     
@@ -415,12 +629,18 @@ class KiwiVoiceAssistantGUI(QWidget):
         """唤醒词检测处理"""
         keyword = data.get('keyword', 'unknown')
         confidence = data.get('confidence', 0.0)
-        self.status_label.setText("Status: wake up")
+        self.update_status_display(
+            'wake_up', '🎯', f'唤醒词检测 - {keyword}',
+            '#fff3e0', '#ffe0b2', '#ffb74d'
+        )
         print(f"🎯 唤醒词: {keyword} ({confidence:.2f})")
     
     def on_vad_speech_start(self, data: dict):
         """语音开始处理"""
-        self.status_label.setText("Status: vad begin")
+        self.update_status_display(
+            'vad_begin', '🎤', '正在说话...',
+            '#e3f2fd', '#bbdefb', '#42a5f5'
+        )
         print("🎤 语音开始")
         # 更新当前VAD状态为1（语音活动）
         self.current_vad_state = 1.0
@@ -428,19 +648,35 @@ class KiwiVoiceAssistantGUI(QWidget):
     def on_vad_speech_end(self, data: dict):
         """语音结束处理"""
         duration = data.get('duration_ms', 0)
-        self.status_label.setText("Status: vad end")
-        print(f"🔇 语音结束 (时长: {duration:.0f}ms)")
+        # VAD结束后直接进入ASR识别状态
+        self.update_status_display(
+            'asr_recognizing', '🔄', 'AI识别中...',
+            '#f3e5f5', '#e1bee7', '#ab47bc'
+        )
+        print(f"🔇 语音结束 (时长: {duration:.0f}ms) → 开始ASR识别")
         # 更新当前VAD状态为0（静音）
         self.current_vad_state = 0.0
-        
-        # VAD END后延迟切换回ready状态
-        QTimer.singleShot(100, lambda: self.status_label.setText("Status: ready"))
+    
+    def on_asr_start(self, data: dict):
+        """ASR开始识别处理"""
+        # 状态已在 on_vad_speech_end 中设置为 "asr recognizing"
+        # 这里只记录日志
+        print("🎙️ ASR: 开始处理音频数据...")
     
     def on_asr_result(self, data: dict):
         """ASR识别结果处理"""
         text = data.get('text', '')
         confidence = data.get('confidence', 0.0)
         latency = data.get('latency_ms', 0.0)
+        
+        # ASR识别完成，进入Orchestrator决策状态
+        self.update_status_display(
+            'orchestrator_deciding', '🤔', 'AI决策中...',
+            '#e8eaf6', '#c5cae9', '#5c6bc0'
+        )
+        print(f"✅ 识别结果: {text} (置信度: {confidence:.2f}, 耗时: {latency:.0f}ms)")
+        print("🤔 Orchestrator决策中...")
+        print("="*60)
         
         # 显示结果 - 使用append而不是setText避免重复
         if text and text.strip():  # 只添加非空文本
@@ -455,13 +691,17 @@ class KiwiVoiceAssistantGUI(QWidget):
         detail = f"置信度: {confidence:.2f} | 延迟: {latency:.0f}ms"
         self.asr_detail_label.setText(detail)
         
-        # ASR结果不改变状态（已经是ready）
         print(f"✅ 识别结果: {text} ({confidence:.2f}, {latency:.0f}ms)")
+        print("🤔 Orchestrator决策中...")
     
     def on_asr_error(self, error: str):
         """ASR识别错误处理"""
-        # ASR错误不改变状态（已经是ready）
         print(f"❌ ASR错误: {error}")
+        # ASR错误，回到ready状态
+        self.update_status_display(
+            'ready', '💤', '系统就绪',
+            '#e8f5e9', '#c8e6c9', '#81c784'
+        )
     
     def on_state_changed(self, data: dict):
         """状态变化处理"""
@@ -489,6 +729,93 @@ class KiwiVoiceAssistantGUI(QWidget):
         # 计算频谱（FFT）
         if len(normalized) >= 512:  # 至少需要512个样本
             self._compute_spectrum(normalized)
+    
+    def on_orchestrator_decision(self, data: dict):
+        """Orchestrator决策结果处理"""
+        print("="*60)
+        print("🤖 GUI: 收到Orchestrator决策结果")
+        print("="*60)
+        
+        query = data.get('query', '')
+        agent = data.get('agent', '')
+        confidence = data.get('confidence', 0.0)
+        reasoning = data.get('reasoning', '')
+        
+        # 更新状态为Agent运行中
+        self.update_status_display(
+            'agent_running', '🚀', f'执行 {agent}...',
+            '#e8f5e9', '#c8e6c9', '#66bb6a'
+        )
+        print(f"✅ GUI: 状态已更新为 'agent running' (选中: {agent})")
+        print("="*60)
+        
+        # 更新选中的Agent
+        self.selected_agent_label.setText(f"🎯 {agent}")
+        
+        # 根据Agent类型设置不同颜色
+        agent_colors = {
+            'music_agent': '#e1f5fe',  # 浅蓝
+            'navigation_agent': '#f3e5f5',  # 浅紫
+            'vehicle_control_agent': '#fff3e0',  # 浅橙
+            'weather_agent': '#e0f2f1',  # 浅青
+            'chat_agent': '#fce4ec',  # 浅粉
+        }
+        bg_color = agent_colors.get(agent, '#e3f2fd')
+        self.selected_agent_label.setStyleSheet(f"""
+            padding: 15px;
+            background-color: {bg_color};
+            border: 2px solid #2196F3;
+            border-radius: 8px;
+            color: #1976D2;
+        """)
+        
+        # 更新置信度
+        confidence_percent = confidence * 100
+        self.confidence_label.setText(f"{confidence_percent:.1f}%")
+        
+        # 根据置信度设置颜色
+        if confidence >= 0.8:
+            conf_color = "#c8e6c9"  # 绿色
+        elif confidence >= 0.5:
+            conf_color = "#fff9c4"  # 黄色
+        else:
+            conf_color = "#ffcdd2"  # 红色
+        
+        self.confidence_label.setStyleSheet(f"""
+            padding: 10px;
+            background-color: {conf_color};
+            border-radius: 5px;
+            font-weight: bold;
+        """)
+        
+        # 更新决策理由
+        self.reasoning_text.setText(reasoning)
+        
+        # 添加到查询历史
+        import time
+        timestamp = time.strftime("%H:%M:%S")
+        history_line = f"[{timestamp}] {query} → {agent} ({confidence_percent:.0f}%)"
+        self.query_history_text.append(history_line)
+        
+        # 滚动到底部
+        self.query_history_text.verticalScrollBar().setValue(
+            self.query_history_text.verticalScrollBar().maximum()
+        )
+        
+        print(f"🤖 Orchestrator决策: {agent} (置信度: {confidence:.2f})")
+        
+        # 模拟Agent执行完成，3秒后回到ready状态
+        QTimer.singleShot(3000, lambda: self._on_agent_complete())
+    
+    def _on_agent_complete(self):
+        """Agent执行完成处理"""
+        self.update_status_display(
+            'ready', '💤', '系统就绪',
+            '#e8f5e9', '#c8e6c9', '#81c784'
+        )
+        print("✅ Agent执行完成，回到ready状态")
+
+
     
     def _compute_spectrum(self, audio_data: np.ndarray):
         """计算音频频谱"""

@@ -1,0 +1,30 @@
+# Orchestrator 配置文件
+
+orchestrator:
+  # LLM配置
+  llm:
+    provider: "dashscope"  # 阿里百炼
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    model: "qwen-plus"  # 通义千问Plus
+    temperature: 0.3
+    max_tokens: 2000
+    
+  # 记忆配置
+  memory:
+    max_short_term: 10  # 最大短期记忆数量
+    max_recall_count: 5  # 每次召回的最大记忆数量
+    
+  # 感知配置
+  perception:
+    enabled_states:
+      - "vehicle"
+      - "music"
+      - "navigation"
+      - "climate"
+      - "environment"
+    
+  # 决策配置
+  decision:
+    min_confidence: 0.5  # 最小置信度阈值
+    default_agent: "chat_agent"  # 默认Agent
+    use_mock_llm: false  # 是否使用模拟LLM（测试用）

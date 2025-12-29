@@ -37,6 +37,7 @@ class Config:
     wakeword: ModuleConfig
     vad: ModuleConfig
     asr: ModuleConfig
+    orchestrator: ModuleConfig
     working_mode: int
     
     @property
@@ -137,6 +138,16 @@ class ConfigManager:
             }
         )
         
+        # Orchestrator配置
+        orchestrator_data = data['modules'].get('orchestrator', {})
+        orchestrator = ModuleConfig(
+            enabled=orchestrator_data.get('enabled', True),
+            settings={
+                'use_mock_llm': orchestrator_data.get('use_mock_llm', True),
+                'default_agent': orchestrator_data.get('default_agent', 'chat_agent')
+            }
+        )
+        
         working_mode = data.get('working_mode', 3)
         
         return Config(
@@ -145,6 +156,7 @@ class ConfigManager:
             wakeword=wakeword,
             vad=vad,
             asr=asr,
+            orchestrator=orchestrator,
             working_mode=working_mode
         )
     
@@ -172,6 +184,10 @@ class ConfigManager:
                 'asr': {
                     'enabled': self.config.asr.enabled,
                     **self.config.asr.settings
+                },
+                'orchestrator': {
+                    'enabled': self.config.orchestrator.enabled,
+                    **self.config.orchestrator.settings
                 }
             },
             'working_mode': self.config.working_mode

@@ -36,6 +36,12 @@ modules:
     model: "whisper"
     language: "zh"
     min_audio_duration_ms: 500  # 最小音频长度（ms）- 短于此值不送ASR识别
+  
+  # Orchestrator 模块
+  orchestrator:
+    enabled: true            # 是否启用Orchestrator
+    use_mock_llm: false       # 是否使用模拟LLM（true=模拟，false=真实LLM）
+    default_agent: "chat_agent"  # 默认Agent
     
 # 工作模式
 # mode 1: 完整模式 (录音 -> 唤醒 -> VAD -> ASR)

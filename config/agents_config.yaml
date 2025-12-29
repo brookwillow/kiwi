@@ -1,21 +1,52 @@
 # Agents 配置文件
 agents:
   - name: "music_agent"
-    description: "音乐播放和控制"
+    description: "音乐播放和控制Agent，负责处理音乐相关的请求"
     enabled: true
+    capabilities:
+      - "播放音乐"
+      - "暂停音乐"
+      - "调节音量"
+      - "切换歌曲"
+      - "搜索歌曲"
+      - "管理播放列表"
     
   - name: "navigation_agent"
-    description: "导航和路线规划"
+    description: "导航和路线规划Agent，负责处理导航相关的请求"
     enabled: true
+    capabilities:
+      - "路线规划"
+      - "实时导航"
+      - "搜索地点"
+      - "查询路况"
+      - "添加途经点"
+      - "切换路线"
     
   - name: "vehicle_control_agent"
-    description: "车辆控制"
+    description: "车辆控制Agent，负责控制车辆各项功能"
     enabled: true
+    capabilities:
+      - "开关车窗"
+      - "控制空调"
+      - "调节座椅"
+      - "车灯控制"
+      - "车门锁控制"
+      - "查询车辆状态"
     
   - name: "weather_agent"
-    description: "天气查询"
+    description: "天气查询Agent，负责查询天气信息"
     enabled: true
+    capabilities:
+      - "查询当前天气"
+      - "查询未来天气"
+      - "天气预警"
+      - "空气质量查询"
     
   - name: "chat_agent"
-    description: "闲聊对话"
+    description: "闲聊对话Agent，负责处理日常对话和闲聊"
     enabled: true
+    capabilities:
+      - "日常对话"
+      - "讲笑话"
+      - "回答常识问题"
+      - "情感交互"

@@ -27,10 +27,12 @@ class GUIModuleAdapter(QObject):
     wakeword_detected_signal = pyqtSignal(dict)      # 唤醒词检测
     vad_speech_start_signal = pyqtSignal(dict)       # 语音开始
     vad_speech_end_signal = pyqtSignal(dict)         # 语音结束
+    asr_start_signal = pyqtSignal(dict)              # ASR开始识别
     asr_result_signal = pyqtSignal(dict)             # ASR识别结果
     asr_error_signal = pyqtSignal(str)               # ASR识别错误
     state_changed_signal = pyqtSignal(dict)          # 状态变化
     audio_frame_signal = pyqtSignal(dict)            # 音频帧（用于波形显示）
+    orchestrator_decision_signal = pyqtSignal(dict)  # Orchestrator决策结果
     
     _instance_counter = 0  # 类变量，用于追踪实例
     
@@ -54,10 +56,12 @@ class GUIModuleAdapter(QObject):
             EventType.WAKEWORD_DETECTED: self._on_wakeword_detected,
             EventType.VAD_SPEECH_START: self._on_vad_speech_start,
             EventType.VAD_SPEECH_END: self._on_vad_speech_end,
+            EventType.ASR_RECOGNITION_START: self._on_asr_start,
             EventType.ASR_RECOGNITION_SUCCESS: self._on_asr_success,
             EventType.ASR_RECOGNITION_FAILED: self._on_asr_failed,
             EventType.STATE_CHANGED: self._on_state_changed,
             EventType.AUDIO_FRAME_READY: self._on_audio_frame,
+            EventType.GUI_UPDATE_TEXT: self._on_gui_update_text,
         }
     
     @property
@@ -171,6 +175,13 @@ class GUIModuleAdapter(QObject):
         }
         self.vad_speech_end_signal.emit(data)
     
+    def _on_asr_start(self, event: Event):
+        """处理ASR开始识别事件"""
+        data = {
+            'timestamp': event.timestamp
+        }
+        self.asr_start_signal.emit(data)
+    
     def _on_asr_success(self, event: Event):
         """处理ASR识别成功事件"""
         data = {
@@ -221,6 +232,25 @@ class GUIModuleAdapter(QObject):
         if self._running and audio_data is not None:
             self.audio_frame_signal.emit(data)
     
+    def _on_gui_update_text(self, event: Event):
+        """处理GUI文本更新事件（包括Orchestrator决策结果）"""
+        if not isinstance(event.data, dict):
+            return
+        
+        update_type = event.data.get('type', '')
+        
+        # 处理Orchestrator决策结果
+        if update_type == 'orchestrator_decision':
+            decision_data = {
+                'query': event.data.get('query', ''),
+                'agent': event.data.get('agent', ''),
+                'confidence': event.data.get('confidence', 0.0),
+                'reasoning': event.data.get('reasoning', ''),
+                'parameters': event.data.get('parameters', {}),
+                'timestamp': event.timestamp
+            }
+            self.orchestrator_decision_signal.emit(decision_data)
+    
     # ==================== 统计信息 ====================
     
     def get_statistics(self) -> dict:
@@ -244,6 +274,10 @@ class GUIModuleAdapter(QObject):
         """连接语音结束处理器"""
         self.vad_speech_end_signal.connect(handler)
     
+    def connect_asr_start_handler(self, handler: Callable):
+        """连接ASR开始处理器"""
+        self.asr_start_signal.connect(handler)
+    
     def connect_asr_result_handler(self, handler: Callable):
         """连接ASR结果处理器"""
         self.asr_result_signal.connect(handler)
@@ -259,3 +293,7 @@ class GUIModuleAdapter(QObject):
     def connect_audio_frame_handler(self, handler: Callable):
         """连接音频帧处理器"""
         self.audio_frame_signal.connect(handler)
+    
+    def connect_orchestrator_decision_handler(self, handler: Callable):
+        """连接Orchestrator决策处理器"""
+        self.orchestrator_decision_signal.connect(handler)
