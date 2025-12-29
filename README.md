@@ -1,519 +1,283 @@
-# 智能语音系统
+# 🥝 Kiwi 语音助手
 
-## 项目概述
+基于事件驱动架构的智能语音助手系统
 
-本项目是一个完整的智能语音交互系统，实现了从语音输入到智能响应的全链路处理。系统采用模块化设计，包含语音处理、智能决策、任务执行和状态管理等核心能力。
+## 🏗️ 核心架构设计
 
-## 系统架构
+### 系统总览
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      智能语音系统                              │
-├─────────────────────────────────────────────────────────────┤
-│  录音模块 → 唤醒模块 → VAD模块 → ASR模块                        │
-│                          ↓                                   │
-│              编排者模块 ← 记忆模块 + 感知模块                    │
-│                          ↓                                   │
-│                   Agents Manager                            │
-│                          ↓                                   │
-│                    Agents 模块                               │
-│                          ↓                                   │
-│                     执行模块                                  │
-│                          ↓                                   │
-│                     感知模块                                  │
-│                          ↓                                   │
-│                     GUI 模块 (可视化展示)                      │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────┐
+│     SystemController (中央总线)      │
+│  • 模块注册与管理                     │
+│  • 事件发布与订阅                     │
+│  • 状态协调                          │
+└─────────────────────────────────────┘
+            │
+  ┌─────────┼─────────┬────────┬────────┐
+  ▼         ▼         ▼        ▼        ▼
+┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐
+│Audio │ │Wake  │ │ VAD  │ │ ASR  │ │ GUI  │
+│      │ │word  │ │      │ │      │ │      │
+└──────┘ └──────┘ └──────┘ └──────┘ └──────┘
 ```
 
-## 核心模块
+### 设计原则
 
-### 1. 录音模块 (Audio Recording Module)
+1. **完全解耦**: 模块之间无直接依赖，通过事件通信
+2. **事件驱动**: 所有模块通信通过中央事件总线
+3. **统一接口**: 所有模块实现 `IModule` 接口
+4. **状态管理**: 集中式状态机管理语音处理流程
+5. **可扩展**: 通过适配器模式轻松接入新模块
 
-**功能描述：**
-- 从 macOS 系统实时采集音频流
-- 支持多种音频采样率和格式配置
-- 提供音频缓冲区管理
-- 处理音频设备的连接和断开
+## 📦 核心模块
 
-**主要职责：**
-- 初始化音频输入设备
-- 实时读取麦克风音频数据
-- 音频流的预处理（降噪、增益调整等）
-- 向下游模块提供标准化的音频数据流
+### 1. SystemController (系统控制器)
 
----
+**职责:**
+- 模块生命周期管理（注册、初始化、启动、停止）
+- 事件总线（发布/订阅机制）
+- 状态协调（通过 VoiceStateManager）
 
-### 2. 唤醒模块 (Wake Word Detection Module)
-
-**功能描述：**
-- 实时监听音频流，检测特定唤醒词 "kiwi"
-- 基于唤醒模型进行低延迟的关键词识别
-- 支持唤醒灵敏度配置
-
-**主要职责：**
-- 加载并运行唤醒词检测模型
-- 持续处理来自录音模块的音频流
-- 检测到 "kiwi" 唤醒词后触发后续处理流程
-- 避免误唤醒，提供准确率保障
-
----
-
-### 3. VAD 模块 (Voice Activity Detection Module)
-
-**功能描述：**
-- 在唤醒后进行人声活动检测
-- 精确判断用户语音的起始和结束时间点
-- 自动切分有效的语音片段
-
-**主要职责：**
-- 区分人声与环境噪音
-- 检测语音的开始边界（起点）
-- 检测语音的结束边界（止点）
-- 输出完整的语音片段供 ASR 处理
-- 支持静音超时配置
-
----
-
-### 4. ASR 模块 (Automatic Speech Recognition Module)
-
-**功能描述：**
-- 将 VAD 模块切分的音频片段转换为文本
-- 支持多种 ASR 引擎接入
-- 提供实时语音识别能力
-
-**主要职责：**
-- 接收 VAD 模块输出的音频片段
-- 调用 ASR 模型进行语音识别
-- 输出识别后的文本内容（用户 query）
-- 处理识别错误和置信度评估
-
----
-
-### 5. 编排者模块 (Orchestrator Module)
-
-**功能描述：**
-- 智能决策中枢，负责任务分发的核心逻辑
-- 根据用户 query、记忆和感知信息动态选择合适的 Agent
-- 实现多 Agent 协作策略
-
-**主要职责：**
-- 分析用户 query 的意图和领域
-- 查询记忆模块获取历史上下文
-- 查询感知模块获取当前系统状态
-- 根据综合信息选择最合适的 Agent
-- 构建请求参数并分发给 Agents Manager
-
-**决策依据：**
-- 用户意图识别（NLU）
-- 对话历史记忆
-- 当前系统状态（感知点）
-- Agent 能力匹配度
-
----
-
-### 6. Agents Manager (Agent 管理器)
-
-**功能描述：**
-- 统一管理所有 Agent 的生命周期
-- 提供 Agent 的注册、查询和调度能力
-- 负责请求分发和响应聚合
-
-**主要职责：**
-- 维护所有 Agent 的配置信息和元数据
-- 提供 Agent 能力查询接口
-- 接收编排者的调度指令
-- 将用户请求路由到目标 Agent
-- 收集 Agent 执行结果并返回
-- 监控 Agent 运行状态和性能
-
-**管理能力：**
-- Agent 注册与注销
-- Agent 配置热更新
-- Agent 负载均衡
-- Agent 故障转移
-
----
-
-### 7. Agents 模块 (Domain Agents Module)
-
-**功能描述：**
-- 包含多个垂直领域的专用 Agent
-- 每个 Agent 专注于特定场景的处理能力
-- 支持 Agent 的动态扩展
-
-**Agent 类型示例：**
-- **音乐 Agent**: 处理音乐播放、搜索、控制等
-- **导航 Agent**: 处理路线规划、地点搜索等
-- **车控 Agent**: 处理车窗、空调、座椅等车辆控制
-- **天气 Agent**: 查询天气信息
-- **闲聊 Agent**: 处理日常对话和闲聊
-- **信息查询 Agent**: 处理百科、新闻等信息查询
-
-**主要职责：**
-- 理解特定领域的用户意图
-- 规划任务执行步骤
-- 调用执行模块的 Tools 完成任务
-- 生成自然语言响应
-- 处理领域内的复杂逻辑
-
----
-
-### 8. 执行模块 (Execution Module)
-
-**功能描述：**
-- 提供标准化的 Tools 实现
-- 作为 Agent 与外部系统交互的统一接口
-- 所有 Tools 的执行会改变系统状态
-
-**主要职责：**
-- 实现各类标准化 Tools（工具函数）
-- 提供 Tools 的注册和调用机制
-- 执行具体的操作指令
-- 更新感知模块中的系统状态
-- 处理执行错误和异常
-
-**Tools 类型示例：**
-- 音乐播放控制（播放、暂停、下一首）
-- 车辆控制（开关车窗、调节温度）
-- 信息查询（搜索、API 调用）
-- 设备控制（智能家居设备）
-
-**执行流程：**
-```
-Agent 请求 → Tool 选择 → 参数验证 → 执行操作 → 状态更新 → 返回结果
+**核心方法:**
+```python
+controller.register_module(module)    # 注册模块
+controller.publish_event(event, data) # 发布事件
+controller.initialize_all(config)     # 初始化所有模块
+controller.start_all()                # 启动所有模块
 ```
 
----
+### 2. Audio Module (音频模块)
 
-### 9. 感知模块 (Perception Module)
+**职责:**
+- 音频采集（麦克风输入）
+- 音频流分发（发布 AUDIO_FRAME_READY 事件）
 
-**功能描述：**
-- 管理系统的所有状态信息
-- 提供实时的环境和设备状态查询
-- 作为系统状态的统一数据源
+**事件:**
+- 发布: `AUDIO_FRAME_READY` - 音频帧准备就绪
 
-**主要职责：**
-- 维护系统状态的实时数据
-- 提供状态查询接口
-- 接收执行模块的状态更新
-- 状态变化的事件通知
-- 状态持久化和恢复
+### 3. Wakeword Module (唤醒词模块)
 
-**管理的状态类型：**
-- **音乐状态**: 当前播放歌曲、播放进度、音量等
-- **车辆状态**: 车窗开关、车门状态、灯光状态等
-- **环境状态**: 车内温度、湿度、空调状态等
-- **导航状态**: 当前位置、目的地、路线信息等
-- **设备状态**: 各类传感器和设备的运行状态
+**职责:**
+- 唤醒词检测（基于 OpenWakeWord）
+- 触发系统进入监听状态
 
-**状态更新机制：**
-- 主动轮询（定时查询设备状态）
-- 被动更新（Tool 执行后的状态同步）
-- 事件驱动（设备状态变化主动上报）
+**事件:**
+- 订阅: `AUDIO_FRAME_READY`
+- 发布: `WAKEWORD_DETECTED` - 检测到唤醒词
 
----
+### 4. VAD Module (语音活动检测)
 
-### 10. 记忆模块 (Memory Module)
+**职责:**
+- 检测语音开始和结束
+- 唤醒后延迟机制（500ms）
+- 连续静音判定（1000ms）
 
-**功能描述：**
-- 管理 Agent 的多层次记忆系统
-- 支持对话上下文的存储和检索
-- 提供长期记忆的管理能力
+**事件:**
+- 订阅: `AUDIO_FRAME_READY`, `WAKEWORD_DETECTED`, `WAKEWORD_RESET`
+- 发布: `VAD_SPEECH_START`, `VAD_SPEECH_END`
 
-**主要职责：**
-- 存储和管理工作记忆（短期任务上下文）
-- 维护对话历史记录
-- 从对话历史中提取和存储长期记忆
-- 提供记忆检索和相关性匹配
-- 记忆的遗忘和清理机制
+**关键逻辑:**
+```python
+# 唤醒后延迟 500ms 开始 VAD 检测
+wakeword_delay_ms = 500
 
-**记忆层次：**
+# 连续静音 1000ms 触发 VAD END
+vad_end_silence_ms = 1000
+```
 
-1. **工作记忆 (Working Memory)**
-   - 当前任务的上下文信息
-   - Agent 执行过程中的临时数据
-   - 生命周期：任务级别
+### 5. ASR Module (语音识别)
 
-2. **对话历史 (Dialogue History)**
-   - 完整的用户交互记录
-   - 包含用户 query 和系统响应
-   - 按时间序列组织
-   - 生命周期：会话级别
+**职责:**
+- 语音转文字（基于 Whisper）
+- 音频缓冲和识别触发
 
-3. **长期记忆 (Long-term Memory)**
-   - 从对话中提取的重要信息
-   - 用户偏好和习惯
-   - 知识图谱和实体关系
-   - 生命周期：持久化存储
+**事件:**
+- 订阅: `AUDIO_FRAME_READY`, `VAD_SPEECH_START`, `VAD_SPEECH_END`
+- 发布: `ASR_RECOGNITION_SUCCESS`, `ASR_RECOGNITION_FAILED`
 
-**记忆应用场景：**
-- 上下文理解（"继续播放"、"再说一遍"）
-- 个性化推荐（根据历史偏好）
-- 多轮对话管理
-- 用户画像构建
+### 6. GUI Module (图形界面)
 
----
+**职责:**
+- 实时波形显示
+- FFT 频谱分析
+- VAD 状态可视化
+- ASR 结果展示
 
-### 11. GUI 模块 (Graphical User Interface Module)
+**事件:**
+- 订阅: 所有事件（用于显示）
 
-**功能描述：**
-- 提供系统运行状态的可视化界面
-- 实时展示语音交互过程和结果
-- 显示系统各模块的工作状态和视觉效果
+### 7. VoiceStateManager (状态机)
 
-**主要职责：**
-- 实时显示音频波形和音量指示
-- 可视化唤醒状态和VAD检测结果
-- 展示ASR识别的文本内容
-- 显示当前激活的Agent和执行流程
-- 展示系统状态（感知模块的数据）
-- 显示对话历史和记忆信息
-- 提供用户交互控制面板
+**职责:**
+- 管理语音处理流程状态
+- 状态转换逻辑
+- VAD END 计数和重置
 
-**界面功能：**
+**状态定义:**
+```python
+IDLE              # 空闲，等待唤醒词
+WAKEWORD_DETECTED # 检测到唤醒词
+LISTENING         # 监听中
+SPEECH_DETECTED   # 检测到语音
+RECOGNIZING       # 识别中
+```
 
-1. **语音处理可视化**
-   - 实时音频波形显示
-   - 唤醒词检测指示灯
-   - VAD人声活动检测状态
-   - 音量/能量级别指示
-
-2. **文本交互区域**
-   - ASR识别结果实时显示
-   - 系统响应文本展示
-   - 对话历史滚动窗口
-   - 文本输入备用通道（测试用）
-
-3. **系统状态面板**
-   - 当前激活的Agent显示
-   - 各模块运行状态指示
-   - 感知模块的状态数据展示
-   - 执行中的Tool显示
-
-4. **控制面板**
-   - 系统启动/停止按钮
-   - 模块开关控制
-   - 参数调节界面
-   - 日志输出窗口
-
-**技术特性：**
-- 支持实时数据更新
-- 响应式布局设计
-- 美观的视觉效果和动画
-- 支持深色/浅色主题切换
-
----
-
-## 系统工作流程
+## 🔄 系统流程
 
 ### 完整交互流程
 
 ```
-1. 录音模块持续采集音频
-   ↓
-2. 唤醒模块检测到 "kiwi" 唤醒词
-   ↓
-3. VAD 模块开始检测人声起止
-   ↓
-4. VAD 切分出完整语音片段
-   ↓
-5. ASR 模块将音频转为文本
-   ↓
-6. 编排者模块接收文本 query
-   ├→ 查询记忆模块（获取上下文）
-   ├→ 查询感知模块（获取当前状态）
-   └→ 决策选择合适的 Agent
-   ↓
-7. Agents Manager 接收调度请求
-   └→ 路由到目标 Agent
-   ↓
-8. Agent 处理请求
-   └→ 调用执行模块的 Tools
-   ↓
-9. 执行模块执行具体操作
-   └→ 更新感知模块状态
-   ↓
-10. 返回执行结果和响应
-    ├→ 更新记忆模块
-    └→ 输出给用户
+1. 系统启动
+   └─> [IDLE] 等待唤醒词
+
+2. 用户说"小智同学"
+   └─> Wakeword 检测
+       └─> 发布 WAKEWORD_DETECTED
+           └─> [WAKEWORD_DETECTED]
+
+3. 延迟 500ms
+   └─> VAD 开始检测
+       └─> [LISTENING]
+
+4. 用户开始说话
+   └─> VAD 检测到语音
+       └─> 发布 VAD_SPEECH_START
+           └─> [SPEECH_DETECTED]
+           └─> ASR 开始缓冲音频
+
+5. 用户说话中...
+   └─> 持续采集音频帧
+
+6. 连续静音 1000ms
+   └─> VAD 触发结束
+       └─> 发布 VAD_SPEECH_END
+           └─> [IDLE] (max_vad_end_count=1)
+           └─> ASR 开始识别
+
+7. ASR 识别完成
+   └─> 发布 ASR_RECOGNITION_SUCCESS
+       └─> GUI 显示结果
+
+8. 返回 [IDLE]
+   └─> 等待下一次唤醒
 ```
 
-### 示例场景
+### 状态转换图
 
-**场景 1: 播放音乐**
-```
-用户: "kiwi, 播放周杰伦的歌"
-→ 唤醒模块触发
-→ VAD 检测语音片段
-→ ASR 识别: "播放周杰伦的歌"
-→ 编排者分析: 音乐领域，选择音乐 Agent
-│   ├── execution/           # 执行模块
-│   │   └── tools/           # Tools 实现
-│   ├── perception/          # 感知模块
-│   ├── memory/              # 记忆模块
-│   └── gui/                 # GUI 可视化模块
+```mermaid
+graph TD
+    A[IDLE 空闲] -->|唤醒词| B[WAKEWORD_DETECTED]
+    B -->|500ms延迟| C[LISTENING 监听]
+    C -->|检测到语音| D[SPEECH_DETECTED]
+    D -->|VAD END| E{判断次数}
+    E -->|达到max_vad_end_count| F[触发ASR]
+    F --> G[RECOGNIZING]
+    G -->|识别完成| A
+    E -->|未达到| C
 ```
 
-**场景 2: 车内温度调节**
+### 事件流程图
+
 ```
-用户: "kiwi, 有点冷，调高温度"
-→ 编排者查询感知模块: current_temp = 20°C
-→ 编排者选择车控 Agent
-→ 车控 Agent 调用: setTemperature(temp=24)
-→ 感知模块更新: ac_status = {temp: 24, mode: "heating"}
-→ 响应: "已将温度调至 24 度"
+AUDIO采集
+    ↓
+AUDIO_FRAME_READY 事件
+    ↓
+    ├─> Wakeword 模块
+    │   └─> WAKEWORD_DETECTED 事件
+    │       └─> 状态机: IDLE → WAKEWORD_DETECTED
+    │
+    ├─> VAD 模块
+    │   ├─> VAD_SPEECH_START 事件
+    │   │   └─> 状态机: LISTENING → SPEECH_DETECTED
+    │   └─> VAD_SPEECH_END 事件
+    │       └─> 状态机: SPEECH_DETECTED → IDLE
+    │       └─> 触发 ASR
+    │
+    └─> ASR 模块
+        └─> ASR_RECOGNITION_SUCCESS 事件
+            └─> GUI 显示结果
 ```
 
-**场景 3: 上下文对话**
+## 🎯 关键配置
+
+### VAD 配置
+```yaml
+vad:
+  settings:
+    wakeword_delay_ms: 500      # 唤醒后延迟
+    vad_end_silence_ms: 1000    # 静音判定时长
+    frame_duration_ms: 30       # 帧时长
+    aggressiveness: 2           # 激进度 (0-3)
 ```
-用户: "kiwi, 播放晴天"
-→ 音乐 Agent 播放歌曲
-→ 记忆模块存储: 当前播放《晴天》
 
-用户: "声音太大了"
-→ 编排者查询记忆: 上文是音乐播放
-→ 选择音乐 Agent
-→ 调用: decreaseVolume()
-→ 响应: "已降低音量"
-```
-
----
-
-## 执行模块详情
-
-### 功能特性
-
-执行模块现在支持**真实的状态管理**，提供170个车载控制工具：
-
-- ✅ **170个工具**覆盖15个功能分类
-- ✅ **真实状态管理** - 工具执行会实际修改车辆状态
-- ✅ **状态查询** - 支持查询所有车辆状态值
-- ✅ **MCP标准接口** - 符合Model Context Protocol规范
-- ✅ **线程安全** - 支持并发工具调用
-- ✅ **交互式控制台** - 命令行工具实时查看状态
-
-### 快速开始
-
+### 状态机配置
 ```python
-from src.execution import get_tool_registry, get_vehicle_state
-
-# 获取工具和状态管理器
-registry = get_tool_registry()
-vehicle = get_vehicle_state()
-
-# 执行工具
-tool = registry.get_tool("start_engine")
-result = await tool.execute()
-
-# 查询状态
-print(vehicle.is_engine_running())  # True
-print(vehicle.get_temperature('driver'))  # 22.0℃
+StateConfig(
+    enable_wakeword=True,       # 启用唤醒词
+    max_vad_end_count=1,        # 一次 VAD END 就重置
+    wakeword_timeout=10.0       # 唤醒超时时间
+)
 ```
 
-### 工具分类
-
-1. **车辆控制** (15) - 启动/熄火、锁车/解锁、驾驶模式等
-2. **空调系统** (18) - 空调控制、温度调节、座椅加热等
-3. **娱乐系统** (20) - 音乐播放、音量调节、蓝牙连接等
-4. **导航系统** (15) - 目的地导航、路况查询、语音导航等
-5. **车窗/天窗** (12) - 车窗控制、天窗控制等
-6. **座椅调节** (15) - 位置调节、记忆位置、按摩等
-7. **灯光控制** (12) - 大灯、氛围灯、雾灯等
-8. **安全系统** (10) - 碰撞预警、盲区监测等
-9. **驾驶辅助** (8) - 车道保持、自动驾驶、自动泊车等
-10. **其他分类** - 车门、雨刷、氛围、信息查询等
-
-### 交互式控制台
+## 🚀 快速启动
 
 ```bash
-# 启动控制台
-python -m src.execution.console
+# 安装依赖
+pip install -r requirements.txt
 
-# 功能包括：
-# 1. 列出所有工具
-# 2. 按分类查看工具
-# 3. 交互式执行工具
-# 4. 实时查看车辆状态
-# 5. 快捷场景（启动车辆、舒适模式等）
+# 启动 GUI
+python main.py
 ```
 
-### 详细文档
+## 📊 GUI 状态显示
 
-- [执行模块文档](docs/EXECUTION_MODULE.md) - 完整功能说明
-- [状态管理文档](docs/STATE_MANAGEMENT.md) - 状态管理系统详解
-- [更新说明](docs/STATE_MANAGEMENT_UPDATE.md) - 最新更新内容
+| 状态 | 显示 | 说明 |
+|------|------|------|
+| 就绪 | `Status: ready` | 系统监听中 |
+| 唤醒 | `Status: wake up` | 检测到唤醒词 |
+| VAD开始 | `Status: vad begin` | 检测到语音活动 |
+| VAD结束 | `Status: vad end` | 语音活动结束 |
+| 返回就绪 | `Status: ready` | 100ms后自动切换 |
 
-### 测试验证
-
-```bash
-# 运行执行模块测试（170个工具）
-python tests/test_execution.py
-
-# 运行状态管理测试
-python tests/test_state_management.py
-
-# 查看使用示例
-python examples/state_management_examples.py
-```
-
----
-
-## 目录结构
+## 📁 项目结构
 
 ```
 kiwi/
-├── README.md                 # 项目说明文档
-├── requirements.txt          # Python 依赖
-├── config/                   # 配置文件
-│   ├── system_config.yaml
-│   └── agents_config.yaml
 ├── src/
-│   ├── audio/               # 录音模块
-│   ├── wakeword/            # 唤醒模块
-│   ├── vad/                 # VAD 模块
-│   ├── asr/                 # ASR 模块
-│   ├── orchestrator/        # 编排者模块
-│   ├── agents/              # Agents 相关
-│   │   ├── manager.py       # Agents Manager
-│   │   ├── base_agent.py    # Agent 基类
-│   │   └── domains/         # 各领域 Agent
-│   ├── execution/           # ⭐️ 执行模块（170个工具 + 状态管理）
-│   │   ├── tool_registry.py      # 工具注册中心
-│   │   ├── tool_handlers.py      # 工具处理器
-│   │   ├── vehicle_state.py      # 状态管理系统
-│   │   └── mcp_server.py         # MCP服务器
-│   ├── perception/          # 感知模块
-│   ├── memory/              # 记忆模块
-│   └── gui/                 # GUI 可视化模块
-├── tests/                   # ⭐️ 测试代码
-│   └── test_execution_module.py     # 执行模块测试（统一）
-├── examples/                # ⭐️ 使用示例
-│   ├── execution_scenarios.py        # 执行场景示例
-│   └── state_management_examples.py  # 状态管理示例
-├── tools/                   # ⭐️ 开发工具
-│   └── vehicle_console.py            # 交互式控制台
-└── docs/                    # ⭐️ 详细文档
-    ├── EXECUTION_MODULE.md           # 执行模块文档
-    ├── STATE_MANAGEMENT.md           # 状态管理文档
-    └── STATE_MANAGEMENT_UPDATE.md    # 更新说明
+│   ├── core/                   # 核心框架
+│   │   ├── controller.py       # 系统控制器
+│   │   ├── events.py           # 事件定义
+│   │   └── interfaces.py       # 模块接口
+│   ├── adapters/               # 模块适配器
+│   │   ├── audio_adapter.py
+│   │   ├── wakeword_adapter.py
+│   │   ├── vad_adapter.py
+│   │   ├── asr_adapter.py
+│   │   └── gui_adapter.py
+│   ├── state_machine/          # 状态机
+│   │   ├── manager.py
+│   │   └── types.py
+│   ├── audio/                  # 音频引擎
+│   ├── wakeword/               # 唤醒词引擎
+│   ├── vad/                    # VAD 引擎
+│   ├── asr/                    # ASR 引擎
+│   └── gui/                    # GUI 界面
+├── config/                     # 配置文件
+├── models/                     # 模型文件
+└── main.py                     # 程序入口
 ```
 
----
+## 🎨 技术栈
 
-## 最新更新
+- **事件系统**: 自研事件总线
+- **唤醒词**: OpenWakeWord
+- **VAD**: WebRTC VAD
+- **ASR**: OpenAI Whisper
+- **GUI**: PyQt5 + pyqtgraph
+- **音频**: PyAudio
 
-### 2024-01 状态管理系统
-- ✅ 实现完整的车辆状态管理系统（70+状态字段）
-- ✅ 为170个工具实现真实的handler函数
-- ✅ 工具执行能真正修改车辆状态
-- ✅ 支持状态查询和批量更新
-- ✅ 线程安全的并发访问
-- ✅ 新增交互式控制台工具
-- ✅ 完善测试和使用示例
+## 📄 许可
 
-详见：[状态管理更新说明](docs/STATE_MANAGEMENT_UPDATE.md)
-
----
-
-**注意**: 本文档会随着项目开发进度持续更新和完善。
+MIT License

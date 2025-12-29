@@ -38,6 +38,14 @@ class WebRTCVAD(BaseVAD):
         # 统计信息
         self.total_frames = 0
         self.speech_start_time = None
+        
+        # 唤醒后延迟处理（从配置读取）
+        self.wakeword_detected = False
+        self.frames_since_wakeword = 0
+        self.wakeword_delay_frames = config.wakeword_delay_frames
+        
+        # 语音结束判定 - 需要较长的静音间隔（从配置读取）
+        self.silence_timeout_frames = config.vad_end_silence_frames
     
     def process_frame(self, audio_frame: np.ndarray) -> VADResult:
         """
@@ -50,6 +58,20 @@ class WebRTCVAD(BaseVAD):
             VAD检测结果
         """
         self.total_frames += 1
+        
+        # 如果唤醒后还在延迟期内，跳过VAD处理
+        if self.wakeword_detected:
+            self.frames_since_wakeword += 1
+            if self.frames_since_wakeword < self.wakeword_delay_frames:
+                # 延迟期内，返回静音结果
+                return VADResult(
+                    is_speech=False,
+                    confidence=0.0,
+                    state=self.state,
+                    event=None,
+                    audio_data=None,
+                    duration_ms=0
+                )
         
         # 转换为bytes（WebRTC VAD需要）
         audio_bytes = audio_frame.astype(np.int16).tobytes()
@@ -64,7 +86,11 @@ class WebRTCVAD(BaseVAD):
     
     def _update_state(self, is_speech: bool, audio_bytes: bytes) -> VADResult:
         """
-        更新状态机 - 简化版本：VAD=1为BEGIN，VAD=0为END
+        更新状态机 - 新逻辑：
+        1. 唤醒后500ms才开始监听VAD
+        2. VAD=1为语音开始
+        3. VAD=0后需要较长静音间隔（1秒）才算真正结束
+        4. 一次VAD结束后立即重置为未唤醒
         
         Args:
             is_speech: 当前帧是否是语音
@@ -80,7 +106,7 @@ class WebRTCVAD(BaseVAD):
         if self.state == VADState.IDLE:
             # 空闲状态
             if is_speech:
-                # 立即切换到语音状态
+                # VAD=1，语音开始
                 self.state = VADState.SPEAKING
                 event = VADEvent.SPEECH_START
                 
@@ -88,6 +114,7 @@ class WebRTCVAD(BaseVAD):
                 self.speech_frames = list(self.pre_speech_buffer)
                 self.speech_frames.append(audio_bytes)
                 
+                self.silence_frames_count = 0
                 self.speech_start_time = self.total_frames
                 print(f"VAD: Speech started at frame {self.total_frames}")
             else:
@@ -96,37 +123,47 @@ class WebRTCVAD(BaseVAD):
         
         elif self.state == VADState.SPEAKING:
             # 正在说话状态
+            self.speech_frames.append(audio_bytes)
+            
             if is_speech:
-                # 继续语音
-                self.speech_frames.append(audio_bytes)
+                # VAD=1，继续语音，重置静音计数
+                self.silence_frames_count = 0
                 event = VADEvent.SPEAKING
             else:
-                # VAD=0，立即结束语音
-                self.speech_frames.append(audio_bytes)  # 最后一帧也加入
+                # VAD=0，增加静音计数，但不立即结束
+                self.silence_frames_count += 1
                 
-                duration_ms = (len(self.speech_frames) * self.config.frame_duration_ms)
-                
-                # 检查语音长度是否足够
-                if len(self.speech_frames) >= self.config.min_speech_frames:
-                    self.state = VADState.IDLE
-                    event = VADEvent.SPEECH_END
+                # 只有静音时间超过阈值才算真正结束
+                if self.silence_frames_count >= self.silence_timeout_frames:
+                    duration_ms = (len(self.speech_frames) * self.config.frame_duration_ms)
                     
-                    # 拼接所有语音帧
-                    audio_data = b''.join(self.speech_frames)
+                    # 检查语音长度是否足够
+                    if len(self.speech_frames) >= self.config.min_speech_frames:
+                        self.state = VADState.IDLE
+                        event = VADEvent.SPEECH_END
+                        
+                        # 拼接所有语音帧
+                        audio_data = b''.join(self.speech_frames)
+                        
+                        print(f"VAD: Speech ended at frame {self.total_frames}, "
+                              f"duration: {duration_ms:.0f}ms, "
+                              f"frames: {len(self.speech_frames)}, "
+                              f"silence: {self.silence_frames_count}")
+                        
+                        # 一次VAD结束后重置唤醒标志和VAD状态
+                        self.wakeword_detected = False
+                        self.frames_since_wakeword = 0
+                        print("VAD: Reset to IDLE after speech end")
+                    else:
+                        # 语音太短，丢弃
+                        print(f"VAD: Speech too short ({duration_ms:.0f}ms), discarded")
+                        self.state = VADState.IDLE
                     
-                    print(f"VAD: Speech ended at frame {self.total_frames}, "
-                          f"duration: {duration_ms}ms, "
-                          f"frames: {len(self.speech_frames)}")
-                else:
-                    # 语音太短，丢弃
-                    print(f"VAD: Speech too short ({duration_ms}ms), discarded")
-                    self.state = VADState.IDLE
-                
-                # 重置
-                self.speech_frames = []
-                self.silence_frames_count = 0
-                self.speech_frames_count = 0
-                self.speech_start_time = None
+                    # 重置
+                    self.speech_frames = []
+                    self.silence_frames_count = 0
+                    self.speech_frames_count = 0
+                    self.speech_start_time = None
         
         return VADResult(
             is_speech=is_speech,
@@ -146,4 +183,13 @@ class WebRTCVAD(BaseVAD):
         self.pre_speech_buffer.clear()
         self.total_frames = 0
         self.speech_start_time = None
+        self.wakeword_detected = False
+        self.frames_since_wakeword = 0
         print("VAD: Reset")
+    
+    def on_wakeword_detected(self):
+        """唤醒词检测到时调用，启动延迟"""
+        self.wakeword_detected = True
+        self.frames_since_wakeword = 0
+        delay_ms = self.wakeword_delay_frames * self.config.frame_duration_ms
+        print(f"VAD: Wakeword detected, starting {self.wakeword_delay_frames} frames ({delay_ms:.0f}ms) delay")

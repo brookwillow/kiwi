@@ -45,6 +45,12 @@ class VADConfig:
     # 最小语音长度（ms）- 少于此长度的语音会被忽略
     min_speech_duration_ms: int = 300
     
+    # 唤醒后延迟（ms）- 唤醒词检测后多久开始VAD检测
+    wakeword_delay_ms: int = 500
+    
+    # VAD结束判定静音时长（ms）- VAD=0后需要持续多久才算真正结束
+    vad_end_silence_ms: int = 1000
+    
     def __post_init__(self):
         """验证配置参数"""
         if self.sample_rate not in [8000, 16000, 32000, 48000]:
@@ -75,6 +81,16 @@ class VADConfig:
     def min_speech_frames(self) -> int:
         """最小语音长度对应的帧数"""
         return int(self.min_speech_duration_ms / self.frame_duration_ms)
+    
+    @property
+    def wakeword_delay_frames(self) -> int:
+        """唤醒后延迟对应的帧数"""
+        return int(self.wakeword_delay_ms / self.frame_duration_ms)
+    
+    @property
+    def vad_end_silence_frames(self) -> int:
+        """VAD结束判定静音时长对应的帧数"""
+        return int(self.vad_end_silence_ms / self.frame_duration_ms)
 
 
 @dataclass

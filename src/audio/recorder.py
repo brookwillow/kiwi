@@ -82,8 +82,14 @@ class AudioRecorder:
             self._trigger_event('error', Exception(f"Audio stream status: {status}"))
         
         try:
-            # 复制数据
+            # 复制数据并归一化
             audio_data = indata.copy().flatten()
+            
+            # 如果是int16格式，归一化到-1.0到1.0范围
+            if self.config.format == 'int16':
+                audio_data = audio_data.astype(np.float32) / 32768.0
+            elif audio_data.dtype != np.float32:
+                audio_data = audio_data.astype(np.float32)
             
             # 创建音频帧
             frame = AudioFrame.create(

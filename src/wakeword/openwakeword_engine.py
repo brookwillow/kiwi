@@ -113,6 +113,13 @@ class OpenWakeWord(BaseWakeWord):
         # 过滤掉非字符串的键（一些辅助模型会返回数字键）
         predictions = {k: v for k, v in predictions.items() if isinstance(k, str) and not k.isdigit()}
         
+        # 找出最高置信度（用于调试）
+        if predictions:
+            max_keyword = max(predictions.items(), key=lambda x: x[1])
+            max_confidence = max_keyword[1]
+        else:
+            max_confidence = 0.0
+        
         # 检查是否有唤醒词被触发
         for keyword, score in predictions.items():
             if score >= self.config.threshold:
@@ -129,9 +136,10 @@ class OpenWakeWord(BaseWakeWord):
                     state=self.state
                 )
         
-        # 未检测到唤醒词
+        # 未检测到唤醒词，但返回最高置信度用于调试
         return WakeWordResult(
             is_detected=False,
+            confidence=max_confidence,
             state=self.state
         )
     
