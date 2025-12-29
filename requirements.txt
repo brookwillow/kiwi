@@ -1,0 +1,19 @@
+# 智能语音系统依赖包
+# Python >= 3.8
+
+# 音频处理
+sounddevice>=0.4.6
+numpy>=1.20.0
+
+# GUI 可视化
+PyQt5>=5.15.0
+pyqtgraph>=0.13.0
+
+# 语音识别
+openai-whisper>=20230314
+
+# AI 框架
+# openai
+
+# 工具库
+pyyaml>=6.0

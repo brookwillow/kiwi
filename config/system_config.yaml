@@ -1,0 +1,42 @@
+# 系统配置文件
+system:
+  name: "Kiwi智能语音系统"
+  version: "0.1.0"
+
+# 音频配置
+audio:
+  sample_rate: 16000
+  channels: 1
+  chunk_size: 1024
+
+# 模块开关配置
+modules:
+  # 唤醒词模块
+  wakeword:
+    enabled: true            # 是否启用唤醒词检测
+    models: []               # 唤醒词模型列表（空则使用默认模型）
+    threshold: 0.95          # 检测阈值（0-1），越高越严格，建议0.3-0.5
+    cooldown_seconds: 5.0    # 唤醒后冷却时间（秒）
+  
+  # VAD 模块
+  vad:
+    enabled: true            # 是否启用VAD检测
+    frame_duration_ms: 30    # 帧长度（10/20/30ms）
+    aggressiveness: 2        # VAD激进程度（0-3）- 提高到2，减少对环境噪音的敏感度
+    silence_timeout_ms: 500  # 静音超时（ms）- 降低到500ms，更容易结束语音片段
+    pre_speech_buffer_ms: 300  # 语音前缓冲（ms）
+    min_speech_duration_ms: 500  # 最小语音长度（ms）- 提高到500ms，过滤短音
+    min_volume_threshold: 0.01  # 最小音量阈值（0-1）- 低于此值的音频片段会被忽略
+  
+  # ASR 模块
+  asr:
+    enabled: true            # 是否启用ASR识别
+    model: "whisper"
+    language: "zh"
+    min_audio_duration_ms: 500  # 最小音频长度（ms）- 短于此值不送ASR识别
+    
+# 工作模式
+# mode 1: 完整模式 (录音 -> 唤醒 -> VAD -> ASR)
+# mode 2: 跳过唤醒 (录音 -> VAD -> ASR)
+# mode 3: 直接ASR (录音 -> ASR)
+working_mode: 2              # 当前工作模式
