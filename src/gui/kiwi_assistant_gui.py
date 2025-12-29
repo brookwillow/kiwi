@@ -879,22 +879,17 @@ class KiwiVoiceAssistantGUI(QWidget):
         
         try:
             stats = self.controller.get_statistics()
-            
             stats_text = (
                 f"运行时间: {stats['uptime_seconds']:.1f}s | "
                 f"模块: {stats['modules_count']} | "
                 f"事件处理: {stats['events_processed']} | "
-                f"队列: {stats['event_queue_size']} | "
-                f"状态: {stats['current_state']}"
+                f"队列: {stats['event_queue_size']}"
             )
-            
             # 添加模块统计
             if self.audio_adapter:
                 audio_stats = self.audio_adapter.get_statistics()
                 stats_text += f" | 音频帧: {audio_stats['frames_processed']}"
-            
             self.stats_label.setText(stats_text)
-            
         except Exception as e:
             print(f"⚠️ 更新统计信息失败: {e}")
     
