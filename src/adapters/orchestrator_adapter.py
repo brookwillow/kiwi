@@ -136,14 +136,15 @@ class OrchestratorModuleAdapter(IModule):
             
             # TODO: 这里可以发送事件给对应的Agent执行
             # 目前先打印日志，后续可以扩展
-            self._dispatch_to_agent(decision.selected_agent, text, decision)
+            agent_response = self._dispatch_to_agent(decision.selected_agent, text, decision)
             
-            # 模拟Agent响应（实际应该由Agent返回）
-            agent_response = f"[{decision.selected_agent}] 已处理: {text}"
-            self._orchestrator.record_agent_response(
-                agent_name=decision.selected_agent,
-                response=agent_response
-            )
+            if agent_response:
+                # 记录Agent真实响应
+                self._orchestrator.record_agent_response(
+                    agent_name=agent_response.agent,
+                    response=agent_response.message
+                )
+                self._publish_agent_response(agent_response)
             
         except Exception as e:
             print(f"❌ Orchestrator处理ASR结果失败: {e}")
@@ -184,21 +185,50 @@ class OrchestratorModuleAdapter(IModule):
             query: 用户查询
             decision: 决策结果
         """
-        # TODO: 实现真实的Agent调度
-        # 可以通过事件系统或直接调用Agent模块
-        print(f"🚀 [分发] {agent_name} <- '{query}'")
+        # 执行Agent
+        agents_module = self._controller.get_module('agents')
+        if not agents_module or not hasattr(agents_module, 'execute_agent'):
+            print(f"⚠️ 无法找到Agents模块，{agent_name} 未执行。")
+            return None
         
-        # 示例：可以发送一个AGENT_EXECUTE事件
-        # agent_event = Event(
-        #     type=EventType.AGENT_EXECUTE,
-        #     source=self._name,
-        #     data={
-        #         'agent_name': agent_name,
-        #         'query': query,
-        #         'decision': decision
-        #     }
-        # )
-        # self._controller.publish_event(agent_event)
+        response = agents_module.execute_agent(agent_name=agent_name, query=query, context={
+            'decision': decision}
+        )
+        print(f"🚀 [分发] {agent_name} <- '{query}' → {response.message}")
+        
+        # 如果Agent执行成功，发布TTS播报请求
+        if response.success and response.message:
+            self._publish_tts_request(response.message)
+        
+        return response
+
+    def _publish_agent_response(self, response):
+        """将Agent响应通知GUI"""
+        gui_event = Event.create(
+            event_type=EventType.GUI_UPDATE_TEXT,
+            source=self._name,
+            data={
+                'type': 'agent_response',
+                'agent': response.agent,
+                'message': response.message,
+                'success': response.success,
+                'data': response.data
+            }
+        )
+        self._controller.publish_event(gui_event)
+    
+    def _publish_tts_request(self, text: str):
+        """发布TTS播报请求"""
+        tts_event = Event.create(
+            event_type=EventType.TTS_SPEAK_REQUEST,
+            source=self._name,
+            data={
+                'text': text,
+                'priority': 'high'
+            }
+        )
+        self._controller.publish_event(tts_event)
+        print(f"🔊 [TTS] 请求播报: {text}")
     
     def get_statistics(self) -> dict:
         """获取统计信息"""

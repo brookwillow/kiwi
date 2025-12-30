@@ -8,6 +8,7 @@ from .wakeword_adapter import WakewordModuleAdapter
 from .vad_adapter import VADModuleAdapter
 from .asr_adapter import ASRModuleAdapter
 from .gui_adapter import GUIModuleAdapter
+from .tts_adapter import TTSModuleAdapter
 
 __all__ = [
     'AudioModuleAdapter',
@@ -15,4 +16,5 @@ __all__ = [
     'VADModuleAdapter',
     'ASRModuleAdapter',
     'GUIModuleAdapter',
+    'TTSModuleAdapter',
 ]

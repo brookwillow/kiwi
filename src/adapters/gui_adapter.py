@@ -33,6 +33,7 @@ class GUIModuleAdapter(QObject):
     state_changed_signal = pyqtSignal(dict)          # 状态变化
     audio_frame_signal = pyqtSignal(dict)            # 音频帧（用于波形显示）
     orchestrator_decision_signal = pyqtSignal(dict)  # Orchestrator决策结果
+    agent_response_signal = pyqtSignal(dict)         # Agent响应结果
     
     _instance_counter = 0  # 类变量，用于追踪实例
     
@@ -233,7 +234,7 @@ class GUIModuleAdapter(QObject):
             self.audio_frame_signal.emit(data)
     
     def _on_gui_update_text(self, event: Event):
-        """处理GUI文本更新事件（包括Orchestrator决策结果）"""
+        """处理GUI文本更新事件（包括Orchestrator决策结果和Agent响应）"""
         if not isinstance(event.data, dict):
             return
         
@@ -250,6 +251,17 @@ class GUIModuleAdapter(QObject):
                 'timestamp': event.timestamp
             }
             self.orchestrator_decision_signal.emit(decision_data)
+        
+        # 处理Agent响应结果
+        elif update_type == 'agent_response':
+            response_data = {
+                'agent': event.data.get('agent', ''),
+                'message': event.data.get('message', ''),
+                'success': event.data.get('success', False),
+                'data': event.data.get('data', {}),
+                'timestamp': event.timestamp
+            }
+            self.agent_response_signal.emit(response_data)
     
     # ==================== 统计信息 ====================
     
@@ -297,3 +309,7 @@ class GUIModuleAdapter(QObject):
     def connect_orchestrator_decision_handler(self, handler: Callable):
         """连接Orchestrator决策处理器"""
         self.orchestrator_decision_signal.connect(handler)
+    
+    def connect_agent_response_handler(self, handler: Callable):
+        """连接Agent响应处理器"""
+        self.agent_response_signal.connect(handler)

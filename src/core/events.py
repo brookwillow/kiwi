@@ -47,6 +47,12 @@ class EventType(Enum):
     GUI_UPDATE_WAVEFORM = "gui_update_waveform"  # 更新波形
     GUI_UPDATE_TEXT = "gui_update_text"         # 更新文本
     GUI_COMMAND = "gui_command"                 # GUI命令
+    
+    # === TTS事件 ===
+    TTS_SPEAK_REQUEST = "tts_speak_request"     # TTS播报请求
+    TTS_SPEAK_START = "tts_speak_start"         # TTS开始播报
+    TTS_SPEAK_END = "tts_speak_end"             # TTS播报完成
+    TTS_SPEAK_ERROR = "tts_speak_error"         # TTS播报错误
 
 
 @dataclass

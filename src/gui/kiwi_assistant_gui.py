@@ -11,21 +11,23 @@ import pyqtgraph as pg
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, 
     QHBoxLayout, QPushButton, QLabel, QComboBox, QTextEdit,
-    QGroupBox, QCheckBox
+    QGroupBox, QCheckBox, QLineEdit
 )
 from PyQt5.QtCore import QTimer, Qt, QPropertyAnimation, QEasingCurve, pyqtProperty
 from PyQt5.QtGui import QFont, QColor
 
 from src.core.controller import SystemController
+from src.core.events import Event, EventType
 from src.adapters import (
     AudioModuleAdapter,
     WakewordModuleAdapter,
     VADModuleAdapter,
     ASRModuleAdapter,
-    GUIModuleAdapter
+    GUIModuleAdapter,
+    TTSModuleAdapter
 )
 from src.adapters.orchestrator_adapter import OrchestratorModuleAdapter
-from src.modules.agents_module import AgentsModule
+from src.agents import AgentsModule
 from src.audio import AudioConfig, AudioRecorder
 from src.wakeword import WakeWordConfig
 from src.vad import VADConfig
@@ -48,10 +50,14 @@ class KiwiVoiceAssistantGUI(QWidget):
         self.wakeword_adapter: Optional[WakewordModuleAdapter] = None
         self.vad_adapter: Optional[VADModuleAdapter] = None
         self.asr_adapter: Optional[ASRModuleAdapter] = None
+        self.tts_adapter: Optional[TTSModuleAdapter] = None
         
         # UI状态
         self.is_running = False
         self.current_vad_state = 0.0  # 当前VAD状态：0=静音，1=语音
+        
+        # 查询历史追踪（用于将query、agent、response关联起来）
+        self._current_query_info = {}  # 存储当前查询的信息
         
         # 显示数据缓冲区
         self.waveform_buffer = deque(maxlen=16000)  # 1秒 @ 16kHz
@@ -245,6 +251,35 @@ class KiwiVoiceAssistantGUI(QWidget):
         """创建控制面板"""
         layout = QHBoxLayout()
         
+        # 文本输入测试区域
+        test_label = QLabel("测试输入:")
+        test_label.setFont(QFont("Arial", 11))
+        layout.addWidget(test_label)
+        
+        self.test_input = QLineEdit()
+        self.test_input.setPlaceholderText("输入文本测试（不需要语音）...")
+        self.test_input.setFont(QFont("Arial", 12))
+        self.test_input.setMinimumWidth(300)
+        self.test_input.returnPressed.connect(self.send_test_query)
+        layout.addWidget(self.test_input)
+        
+        self.send_btn = QPushButton("📤 发送")
+        self.send_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                font-size: 12px;
+                font-weight: bold;
+                padding: 8px 16px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+        """)
+        self.send_btn.clicked.connect(self.send_test_query)
+        layout.addWidget(self.send_btn)
+        
         layout.addStretch()
         
         # 启动/停止按钮
@@ -344,6 +379,49 @@ class KiwiVoiceAssistantGUI(QWidget):
         else:
             self.stop_system()
     
+    def send_test_query(self):
+        """发送测试查询（不通过语音）"""
+        # 检查系统是否运行
+        if not self.is_running:
+            print("⚠️ [测试] 系统未启动，无法发送查询")
+            return
+        
+        # 获取输入文本
+        text = self.test_input.text().strip()
+        if not text:
+            return
+        
+        # 清空输入框
+        self.test_input.clear()
+        
+        # 在单独的线程中发布事件，避免阻塞GUI主线程
+        import threading
+        def publish_event_async():
+            try:
+                # 创建合成ASR事件
+                event = Event.create(
+                    event_type=EventType.ASR_RECOGNITION_SUCCESS,
+                    source="gui_test",
+                    data={
+                        'text': text,
+                        'confidence': 1.0,
+                        'latency_ms': 0
+                    }
+                )
+                
+                # 发布事件到系统（这会触发orchestrator → agent → TTS的处理链）
+                self.controller.publish_event(event)
+                print(f"🧪 [测试] 发送查询: {text}")
+                
+            except Exception as e:
+                print(f"❌ [测试] 发送查询失败: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        # 启动异步线程
+        thread = threading.Thread(target=publish_event_async, daemon=True)
+        thread.start()
+    
     def start_system(self):
         """启动系统"""
         try:
@@ -421,14 +499,18 @@ class KiwiVoiceAssistantGUI(QWidget):
             )
             self.controller.register_module(self.orchestrator_adapter)
             
-            # 6. 创建并注册GUI适配器
+            # 6. 创建并注册TTS模块
+            self.tts_adapter = TTSModuleAdapter(self.controller)
+            self.controller.register_module(self.tts_adapter)
+            
+            # 7. 创建并注册GUI适配器
             self.gui_adapter = GUIModuleAdapter(self.controller)
             self.controller.register_module(self.gui_adapter)
             
-            # 7. 连接GUI信号处理器
+            # 8. 连接GUI信号处理器
             self.connect_gui_signals()
             
-            # 8. 创建状态机配置
+            # 9. 创建状态机配置
             from src.state_machine import StateConfig
             state_config = StateConfig(
                 enable_wakeword=True,
@@ -439,15 +521,15 @@ class KiwiVoiceAssistantGUI(QWidget):
                 debug=False
             )
             
-            # 9. 初始化所有模块
+            # 10. 初始化所有模块
             if not self.controller.initialize_all(state_config):
                 raise Exception("模块初始化失败")
             
-            # 10. 启动所有模块
+            # 11. 启动所有模块
             if not self.controller.start_all():
                 raise Exception("模块启动失败")
             
-            # 11. 更新UI状态
+            # 12. 更新UI状态
             self.is_running = True
             self.start_btn.setText("⏸️ 停止系统")
             self.start_btn.setStyleSheet("""
@@ -596,6 +678,7 @@ class KiwiVoiceAssistantGUI(QWidget):
         self.gui_adapter.connect_state_changed_handler(self.on_state_changed)
         self.gui_adapter.connect_audio_frame_handler(self.on_audio_frame)
         self.gui_adapter.connect_orchestrator_decision_handler(self.on_orchestrator_decision)
+        self.gui_adapter.connect_agent_response_handler(self._on_agent_response)
     
     def update_status_display(self, status: str, icon: str, text: str, color_start: str, color_end: str, border_color: str):
         """
@@ -711,24 +794,32 @@ class KiwiVoiceAssistantGUI(QWidget):
     def on_audio_frame(self, data: dict):
         """音频帧处理（用于波形显示和频谱分析）"""
         audio_data = data.get('audio_data')
-        if audio_data is None:
+        if audio_data is None or len(audio_data) == 0:
             return
         
-        # 归一化
-        if audio_data.dtype == np.int16:
-            normalized = audio_data.astype(np.float32) / 32768.0
-        else:
-            normalized = audio_data
-        
-        # 添加到缓冲区
-        self.waveform_buffer.extend(normalized)
-        
-        # 更新VAD状态历史（每个音频帧都添加当前状态）
-        self.vad_state_history.append(self.current_vad_state)
-        
-        # 计算频谱（FFT）
-        if len(normalized) >= 512:  # 至少需要512个样本
-            self._compute_spectrum(normalized)
+        try:
+            # 归一化
+            if audio_data.dtype == np.int16:
+                normalized = audio_data.astype(np.float32) / 32768.0
+            else:
+                normalized = audio_data
+            
+            # 检查数据有效性
+            if not np.isfinite(normalized).all():
+                return
+            
+            # 添加到缓冲区
+            self.waveform_buffer.extend(normalized)
+            
+            # 更新VAD状态历史（每个音频帧都添加当前状态）
+            self.vad_state_history.append(self.current_vad_state)
+            
+            # 计算频谱（FFT）
+            if len(normalized) >= 512:  # 至少需要512个样本
+                self._compute_spectrum(normalized)
+        except Exception as e:
+            # 避免音频处理错误影响系统运行
+            pass
     
     def on_orchestrator_decision(self, data: dict):
         """Orchestrator决策结果处理"""
@@ -791,21 +882,49 @@ class KiwiVoiceAssistantGUI(QWidget):
         # 更新决策理由
         self.reasoning_text.setText(reasoning)
         
-        # 添加到查询历史
+        # 保存当前查询信息，等待Agent响应后再添加到历史
         import time
         timestamp = time.strftime("%H:%M:%S")
-        history_line = f"[{timestamp}] {query} → {agent} ({confidence_percent:.0f}%)"
-        self.query_history_text.append(history_line)
-        
-        # 滚动到底部
-        self.query_history_text.verticalScrollBar().setValue(
-            self.query_history_text.verticalScrollBar().maximum()
-        )
+        self._current_query_info = {
+            'timestamp': timestamp,
+            'query': query,
+            'agent': agent,
+            'confidence': confidence_percent
+        }
         
         print(f"🤖 Orchestrator决策: {agent} (置信度: {confidence:.2f})")
         
         # 模拟Agent执行完成，3秒后回到ready状态
         QTimer.singleShot(3000, lambda: self._on_agent_complete())
+    
+    def _on_agent_response(self, response_data: dict):
+        """处理Agent响应结果"""
+        agent = response_data.get('agent', '')
+        message = response_data.get('message', '')
+        success = response_data.get('success', False)
+        
+        # 添加完整的历史记录（包含query、agent、response）
+        if self._current_query_info:
+            timestamp = self._current_query_info.get('timestamp', '')
+            query = self._current_query_info.get('query', '')
+            agent_name = self._current_query_info.get('agent', '')
+            confidence = self._current_query_info.get('confidence', 0)
+            
+            # 构建历史记录行
+            status_icon = "✅" if success else "❌"
+            history_line = f"{status_icon} [{timestamp}] {query}\n   → Agent: {agent_name} ({confidence:.0f}%)\n   → 回复: {message}\n"
+            
+            self.query_history_text.append(history_line)
+            
+            # 滚动到底部
+            self.query_history_text.verticalScrollBar().setValue(
+                self.query_history_text.verticalScrollBar().maximum()
+            )
+            
+            # 清空当前查询信息
+            self._current_query_info = {}
+        
+        print(f"📝 [GUI] Agent响应已记录: {message}")
     
     def _on_agent_complete(self):
         """Agent执行完成处理"""
@@ -819,36 +938,51 @@ class KiwiVoiceAssistantGUI(QWidget):
     
     def _compute_spectrum(self, audio_data: np.ndarray):
         """计算音频频谱"""
-        # 使用最近的1024个样本以获得更好的频率分辨率
-        samples = audio_data[-1024:] if len(audio_data) > 1024 else audio_data
-        
-        # 应用汉宁窗减少频谱泄漏
-        window = np.hanning(len(samples))
-        windowed_samples = samples * window
-        
-        # 执行FFT
-        fft_result = np.fft.rfft(windowed_samples)
-        
-        # 计算幅度（dB）
-        magnitude = np.abs(fft_result)
-        magnitude = np.maximum(magnitude, 1e-10)  # 避免log(0)
-        magnitude_db = 20 * np.log10(magnitude)
-        
-        # 归一化到[-60, 0]范围，增强对比度
-        magnitude_db = np.clip(magnitude_db, -60, 0)
-        
-        # 应用动态范围压缩，拉开频段差距
-        # 使用平方根压缩增强低幅度信号的可见度
-        magnitude_normalized = (magnitude_db + 60) / 60  # 归一化到[0, 1]
-        magnitude_compressed = np.sqrt(magnitude_normalized)  # 平方根压缩
-        magnitude_db_enhanced = magnitude_compressed * 60 - 60  # 映射回dB范围
-        
-        # 计算频率轴（假设采样率16kHz）
-        sample_rate = 16000
-        freqs = np.fft.rfftfreq(len(samples), 1.0 / sample_rate)
-        
-        # 存储频谱数据
-        self.spectrum_data = (freqs, magnitude_db_enhanced)
+        try:
+            # 检查输入数据
+            if audio_data is None or len(audio_data) == 0:
+                return
+            
+            # 使用最近的1024个样本以获得更好的频率分辨率
+            samples = audio_data[-1024:] if len(audio_data) > 1024 else audio_data
+            
+            if len(samples) < 64:  # 至少需要64个样本
+                return
+            
+            # 应用汉宁窗减少频谱泄漏
+            window = np.hanning(len(samples))
+            windowed_samples = samples * window
+            
+            # 执行FFT
+            fft_result = np.fft.rfft(windowed_samples)
+            
+            # 计算幅度（dB）
+            magnitude = np.abs(fft_result)
+            magnitude = np.maximum(magnitude, 1e-10)  # 避免log(0)
+            magnitude_db = 20 * np.log10(magnitude)
+            
+            # 检查计算结果有效性
+            if not np.isfinite(magnitude_db).all():
+                return
+            
+            # 归一化到[-60, 0]范围，增强对比度
+            magnitude_db = np.clip(magnitude_db, -60, 0)
+            
+            # 应用动态范围压缩，拉开频段差距
+            # 使用平方根压缩增强低幅度信号的可见度
+            magnitude_normalized = (magnitude_db + 60) / 60  # 归一化到[0, 1]
+            magnitude_compressed = np.sqrt(magnitude_normalized)  # 平方根压缩
+            magnitude_db_enhanced = magnitude_compressed * 60 - 60  # 映射回dB范围
+            
+            # 计算频率轴（假设采样率16kHz）
+            sample_rate = 16000
+            freqs = np.fft.rfftfreq(len(samples), 1.0 / sample_rate)
+            
+            # 存储频谱数据
+            self.spectrum_data = (freqs, magnitude_db_enhanced)
+        except Exception as e:
+            # 避免频谱计算错误影响系统
+            pass
     
     # ==================== 显示更新 ====================
     
@@ -857,20 +991,27 @@ class KiwiVoiceAssistantGUI(QWidget):
         if not self.is_running:
             return
         
-        # 更新波形
-        if len(self.waveform_buffer) > 0:
-            waveform_data = np.array(self.waveform_buffer)
-            self.waveform_curve.setData(waveform_data)
-        
-        # 更新频谱
-        if self.spectrum_data is not None:
-            freqs, magnitude_db = self.spectrum_data
-            self.spectrum_curve.setData(freqs, magnitude_db)
-        
-        # 更新VAD状态
-        if len(self.vad_state_history) > 0:
-            vad_data = np.array(self.vad_state_history)
-            self.vad_curve.setData(vad_data)
+        try:
+            # 更新波形
+            if len(self.waveform_buffer) > 0:
+                waveform_data = np.array(self.waveform_buffer)
+                if len(waveform_data) > 0 and np.isfinite(waveform_data).all():
+                    self.waveform_curve.setData(waveform_data)
+            
+            # 更新频谱
+            if self.spectrum_data is not None:
+                freqs, magnitude_db = self.spectrum_data
+                if len(freqs) > 0 and len(magnitude_db) > 0 and np.isfinite(magnitude_db).all():
+                    self.spectrum_curve.setData(freqs, magnitude_db)
+            
+            # 更新VAD状态
+            if len(self.vad_state_history) > 0:
+                vad_data = np.array(self.vad_state_history)
+                if len(vad_data) > 0 and np.isfinite(vad_data).all():
+                    self.vad_curve.setData(vad_data)
+        except Exception as e:
+            # 避免显示更新错误导致整个GUI卡死
+            pass  # 静默处理，不打印日志以避免终端刷屏
     
     def update_stats(self):
         """更新统计信息"""

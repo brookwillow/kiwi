@@ -12,7 +12,7 @@ ASR模块 → ASR_RECOGNITION_SUCCESS事件 → SystemController → Orchestrato
 
 ### 核心组件
 
-1. **AgentsModule** (`src/modules/agents_module.py`)
+1. **AgentsModule** (`src/agents/module.py`)
    - 从`config/agents_config.yaml`加载Agent配置
    - 提供可用Agent列表给Orchestrator
 
