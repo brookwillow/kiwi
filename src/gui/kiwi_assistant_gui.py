@@ -397,6 +397,7 @@ class KiwiVoiceAssistantGUI(QWidget):
         # 在单独的线程中发布事件，避免阻塞GUI主线程
         import threading
         def publish_event_async():
+            print("publish_event_async ")
             try:
                 # 创建合成ASR事件
                 event = Event.create(
@@ -419,8 +420,9 @@ class KiwiVoiceAssistantGUI(QWidget):
                 traceback.print_exc()
         
         # 启动异步线程
-        thread = threading.Thread(target=publish_event_async, daemon=True)
-        thread.start()
+        # thread = threading.Thread(target=publish_event_async, daemon=True)
+        # thread.start()
+        publish_event_async()
     
     def start_system(self):
         """启动系统"""
@@ -713,7 +715,7 @@ class KiwiVoiceAssistantGUI(QWidget):
         keyword = data.get('keyword', 'unknown')
         confidence = data.get('confidence', 0.0)
         self.update_status_display(
-            'wake_up', '🎯', f'唤醒词检测 - {keyword}',
+            'wake_up', '🎯', f'唤醒',
             '#fff3e0', '#ffe0b2', '#ffb74d'
         )
         print(f"🎯 唤醒词: {keyword} ({confidence:.2f})")
@@ -733,7 +735,7 @@ class KiwiVoiceAssistantGUI(QWidget):
         duration = data.get('duration_ms', 0)
         # VAD结束后直接进入ASR识别状态
         self.update_status_display(
-            'asr_recognizing', '🔄', 'AI识别中...',
+            'asr_recognizing', '🔄', '识别中...',
             '#f3e5f5', '#e1bee7', '#ab47bc'
         )
         print(f"🔇 语音结束 (时长: {duration:.0f}ms) → 开始ASR识别")
@@ -893,9 +895,7 @@ class KiwiVoiceAssistantGUI(QWidget):
         }
         
         print(f"🤖 Orchestrator决策: {agent} (置信度: {confidence:.2f})")
-        
-        # 模拟Agent执行完成，3秒后回到ready状态
-        QTimer.singleShot(3000, lambda: self._on_agent_complete())
+    
     
     def _on_agent_response(self, response_data: dict):
         """处理Agent响应结果"""
@@ -923,10 +923,7 @@ class KiwiVoiceAssistantGUI(QWidget):
             
             # 清空当前查询信息
             self._current_query_info = {}
-        
-        print(f"📝 [GUI] Agent响应已记录: {message}")
-    
-    def _on_agent_complete(self):
+
         """Agent执行完成处理"""
         self.update_status_display(
             'ready', '💤', '系统就绪',
@@ -934,7 +931,7 @@ class KiwiVoiceAssistantGUI(QWidget):
         )
         print("✅ Agent执行完成，回到ready状态")
 
-
+        print(f"📝 [GUI] Agent响应已记录: {message}")
     
     def _compute_spectrum(self, audio_data: np.ndarray):
         """计算音频频谱"""

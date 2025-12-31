@@ -81,6 +81,7 @@ class LLMDecisionMaker:
 **对话历史：**
 {json.dumps(conversation_history, ensure_ascii=False, indent=2)}
 
+** 用户画像和偏好：**
 {long_term_info}
 
 **当前系统状态：**

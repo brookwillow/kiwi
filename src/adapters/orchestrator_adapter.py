@@ -99,7 +99,13 @@ class OrchestratorModuleAdapter(IModule):
         
         # 只处理ASR识别成功事件
         if event.type == EventType.ASR_RECOGNITION_SUCCESS:
-            self._handle_asr_result(event)
+            import threading
+            # self._handle_asr_result(event)
+            #thread = threading.Thread(target=self._handle_asr_result(event), daemon=True)
+            thread = threading.Thread(target=self._handle_asr_result, args=(event,), daemon=True)
+            thread.start()
+
+            
     
     def _handle_asr_result(self, event: ASREvent):
         """
