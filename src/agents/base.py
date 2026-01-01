@@ -11,6 +11,7 @@ class AgentResponse:
 
     agent: str
     success: bool
+    query: str
     message: str
     data: Dict[str, Any] = field(default_factory=dict)
 

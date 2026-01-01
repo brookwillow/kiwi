@@ -7,6 +7,7 @@ import re
 from ollama import chat
 
 from src.agents.base import AgentResponse
+from src.core.events import AgentContext
 
 
 class ChatAgent:
@@ -24,18 +25,32 @@ class ChatAgent:
         self._ollama_model = os.getenv("OLLAMA_MODEL", "qwen3:8b")
         self._ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
-    def handle(self, query: str, context: Optional[Dict[str, Any]] = None) -> AgentResponse:
+    def handle(self, query: str, context: AgentContext  = None) -> AgentResponse:
         """Generate a chat reply using LLM if available, otherwise fallback rules."""
         # Build structured chat messages per Ollama's Python client expectations
+
+        # 之前三轮对话内容
+        last_three_conversations = ""
+        if context and context.short_term_memories:
+            for memory in context.short_term_memories[-3:]:
+                last_three_conversations += "[query]" + memory.query + "[response]" + memory.response + "\n"
+
+        # last_conversation = "[query]"+ context.short_term_memories[0].query + "[response]" + context.short_term_memories[0].response if context and context.short_term_memories else ""
+
         system_prompt = (
-            "你是一个闲聊助手，根据用户的说的话，跟他进行聊天。要求：不要超过100个字，"
-            "禁止展示思考过程。"
+            "你是一个闲聊助手，根据用户的说的话，跟他进行聊天。要求："\
+            "1. 不要超过100个字"\
+            "2. 禁止展示思考过程" \
+            "3. 如果根据query无法回答，可参考之前的对话内容" \
+            "之前的对话内容："\
+            f"{last_three_conversations}"
         )
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": query or ""},
         ]
 
+        print("chat prompt:", messages)  
         try:
             response = chat(
                 model=self._ollama_model,
@@ -52,6 +67,7 @@ class ChatAgent:
             return AgentResponse(
                 agent=self.name,
                 success=True,
+                query=query,
                 message=content,
                 data={"intent": "chat", "model": f"ollama:{self._ollama_model}"},
             )
@@ -77,5 +93,5 @@ class ChatAgent:
 
             data = {"intent": "chat"}
             return AgentResponse(
-                agent=self.name, success=True, message=message, data=data
+                agent=self.name, success=True, query=query, message=message, data=data
             )

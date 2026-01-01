@@ -5,7 +5,7 @@
 """
 from abc import ABC, abstractmethod
 from typing import Optional, Callable, Any
-from .events import Event
+from .events import Event, ShortTermMemory, LongTermMemory
 
 
 class IModule(ABC):
@@ -210,4 +210,59 @@ class IGUIModule(IModule):
     @abstractmethod
     def show_error(self, message: str):
         """显示错误信息"""
+        pass
+
+
+class IMemoryModule(IModule):
+    """Memory模块接口"""
+    
+    @abstractmethod
+    def add_short_term_memory(self, entry: dict):
+        """
+        添加短期记忆
+        
+        Args:
+            entry: 记忆条目
+        """
+        pass
+
+
+    @abstractmethod
+    def get_short_term_memories(self, n: int) -> list:
+        """
+        获取最近的短期记忆
+        
+        Args:
+            n: 记忆条目数量
+            
+        Returns:
+            记忆条目列表
+        """
+        pass
+
+    @abstractmethod
+    def get_related_short_term_memory(self, query: str, n: int) -> list:
+        """
+        获取与查询相关的短期记忆
+        
+        Args:
+            query: 查询内容
+            n: 记忆条目数量
+            
+        Returns:
+            相关记忆条目列表
+        """
+        pass
+
+    @abstractmethod
+    def get_related_long_term_memory(self, query: str) -> LongTermMemory:
+        """
+        获取与查询相关的长期记忆
+        
+        Args:
+            query: 查询内容
+            
+        Returns:
+            相关长期记忆
+        """
         pass

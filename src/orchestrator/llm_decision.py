@@ -5,9 +5,7 @@ LLM决策器 - 基于阿里百炼平台
 import json
 from typing import Dict, Any, Optional
 from openai import OpenAI
-
-from .types import OrchestratorContext, OrchestratorDecision
-
+from src.core.events import OrchestratorContext, OrchestratorDecision
 
 class LLMDecisionMaker:
     """LLM决策器"""
@@ -50,8 +48,8 @@ class LLMDecisionMaker:
         conversation_history = []
         for memory in context.short_term_memories:
             conversation_history.append({
-                "role": memory.role,
-                "content": memory.content
+                "user": memory.query,
+                "assistant": memory.response
             })
         
         # 构建长期记忆
@@ -125,6 +123,9 @@ class LLMDecisionMaker:
         try:
             # 构建提示词
             prompt = self.build_prompt(context)
+
+            print("🚀 调用LLM进行决策...")
+            print(f"Prompt:\n{prompt}\n")
             
             # 调用大模型
             completion = self.client.chat.completions.create(

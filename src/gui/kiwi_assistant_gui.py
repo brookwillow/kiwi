@@ -24,7 +24,8 @@ from src.adapters import (
     VADModuleAdapter,
     ASRModuleAdapter,
     GUIModuleAdapter,
-    TTSModuleAdapter
+    TTSModuleAdapter,
+    MemoryModuleAdapter
 )
 from src.adapters.orchestrator_adapter import OrchestratorModuleAdapter
 from src.agents import AgentsModule
@@ -227,16 +228,54 @@ class KiwiVoiceAssistantGUI(QWidget):
         self.reasoning_text.setMaximumHeight(150)
         layout.addWidget(self.reasoning_text)
         
-        # 用户查询历史
-        history_label = QLabel("查询历史:")
-        history_label.setFont(QFont("Arial", 11))
-        layout.addWidget(history_label)
+        # 创建短期记忆和长期记忆的水平布局
+        memory_layout = QHBoxLayout()
+        
+        # 左侧：短期记忆（原查询历史）
+        short_term_widget = QWidget()
+        short_term_layout = QVBoxLayout()
+        short_term_layout.setContentsMargins(0, 0, 0, 0)
+        
+        short_term_label = QLabel("📝 短期记忆:")
+        short_term_label.setFont(QFont("Arial", 11, QFont.Bold))
+        short_term_layout.addWidget(short_term_label)
         
         self.query_history_text = QTextEdit()
         self.query_history_text.setReadOnly(True)
         self.query_history_text.setFont(QFont("Courier", 10))
-        self.query_history_text.setPlaceholderText("查询历史将显示在这里...")
-        layout.addWidget(self.query_history_text)
+        self.query_history_text.setPlaceholderText("短期记忆将显示在这里...")
+        short_term_layout.addWidget(self.query_history_text)
+        
+        short_term_widget.setLayout(short_term_layout)
+        memory_layout.addWidget(short_term_widget, stretch=1)
+        
+        # 右侧：长期记忆
+        long_term_widget = QWidget()
+        long_term_layout = QVBoxLayout()
+        long_term_layout.setContentsMargins(0, 0, 0, 0)
+        
+        long_term_label = QLabel("🧠 长期记忆:")
+        long_term_label.setFont(QFont("Arial", 11, QFont.Bold))
+        long_term_layout.addWidget(long_term_label)
+        
+        self.long_term_memory_text = QTextEdit()
+        self.long_term_memory_text.setReadOnly(True)
+        self.long_term_memory_text.setFont(QFont("Courier", 10))
+        self.long_term_memory_text.setPlaceholderText("长期记忆将显示在这里...")
+        self.long_term_memory_text.setStyleSheet("""
+            QTextEdit {
+                background-color: #fff8e1;
+                border: 1px solid #ffc107;
+                border-radius: 5px;
+                padding: 5px;
+            }
+        """)
+        long_term_layout.addWidget(self.long_term_memory_text)
+        
+        long_term_widget.setLayout(long_term_layout)
+        memory_layout.addWidget(long_term_widget, stretch=1)
+        
+        layout.addLayout(memory_layout)
         
         # Orchestrator统计
         self.orchestrator_stats_label = QLabel("Orchestrator统计: --")
@@ -485,7 +524,7 @@ class KiwiVoiceAssistantGUI(QWidget):
             self.controller.register_module(self.asr_adapter)
             
             # 4. 创建并注册Agents模块
-            self.agents_module = AgentsModule(config_path="config/agents_config.yaml")
+            self.agents_module = AgentsModule(self.controller,config_path="config/agents_config.yaml")
             self.controller.register_module(self.agents_module)
             
             # 5. 创建并注册Orchestrator模块
@@ -508,11 +547,15 @@ class KiwiVoiceAssistantGUI(QWidget):
             # 7. 创建并注册GUI适配器
             self.gui_adapter = GUIModuleAdapter(self.controller)
             self.controller.register_module(self.gui_adapter)
+
+            # 8. 创建并注册记忆适配器（使用相同的API key）
+            self.memory_adapter = MemoryModuleAdapter(self.controller, api_key=api_key)
+            self.controller.register_module(self.memory_adapter)
             
-            # 8. 连接GUI信号处理器
+            # 9. 连接GUI信号处理器
             self.connect_gui_signals()
             
-            # 9. 创建状态机配置
+            # 10. 创建状态机配置
             from src.state_machine import StateConfig
             state_config = StateConfig(
                 enable_wakeword=True,
@@ -523,15 +566,15 @@ class KiwiVoiceAssistantGUI(QWidget):
                 debug=False
             )
             
-            # 10. 初始化所有模块
+            # 11. 初始化所有模块
             if not self.controller.initialize_all(state_config):
                 raise Exception("模块初始化失败")
             
-            # 11. 启动所有模块
+            # 12. 启动所有模块
             if not self.controller.start_all():
                 raise Exception("模块启动失败")
             
-            # 12. 更新UI状态
+            # 13. 更新UI状态
             self.is_running = True
             self.start_btn.setText("⏸️ 停止系统")
             self.start_btn.setStyleSheet("""
@@ -567,7 +610,7 @@ class KiwiVoiceAssistantGUI(QWidget):
                 '#e8f5e9', '#c8e6c9', '#81c784'
             )
             
-            # 9. 启动显示更新定时器
+            # 启动显示更新定时器
             self.display_timer.start()
             self.stats_timer.start()
             
@@ -1028,8 +1071,54 @@ class KiwiVoiceAssistantGUI(QWidget):
                 audio_stats = self.audio_adapter.get_statistics()
                 stats_text += f" | 音频帧: {audio_stats['frames_processed']}"
             self.stats_label.setText(stats_text)
+            
+            # 更新长期记忆显示
+            self.update_long_term_memory_display()
         except Exception as e:
             print(f"⚠️ 更新统计信息失败: {e}")
+    
+    def update_long_term_memory_display(self):
+        """更新长期记忆显示"""
+        try:
+            if not self.memory_adapter:
+                return
+            
+            # 从memory模块获取长期记忆（返回LongTermMemory对象）
+            long_term = self.memory_adapter.get_related_long_term_memory()
+            if not long_term:
+                return
+            
+            # 格式化显示
+            display_text = ""
+            
+            # 摘要
+            if long_term.summary:
+                display_text += f"📝 摘要:\n{long_term.summary}\n\n"
+            
+            # 用户画像
+            if long_term.user_profile:
+                display_text += "👤 用户画像:\n"
+                for key, value in long_term.user_profile.items():
+                    if value:
+                        display_text += f"  • {key}: {value}\n"
+                display_text += "\n"
+            
+            # 偏好信息
+            if long_term.preferences:
+                display_text += "❤️ 偏好信息:\n"
+                for key, value in long_term.preferences.items():
+                    if value:
+                        if isinstance(value, list) and value:
+                            display_text += f"  • {key}: {', '.join(str(v) for v in value)}\n"
+                        elif not isinstance(value, list):
+                            display_text += f"  • {key}: {value}\n"
+            
+            # 只在内容有变化时更新（避免闪烁）
+            if display_text and display_text != self.long_term_memory_text.toPlainText():
+                self.long_term_memory_text.setPlainText(display_text)
+                
+        except Exception as e:
+            print(f"⚠️ 更新长期记忆显示失败: {e}")
     
     def closeEvent(self, event):
         """窗口关闭事件"""

@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Dict, Any, Optional
 
 from src.agents.base import AgentResponse
+from src.core.events import AgentContext
 
 
 class NavigationAgent:
@@ -13,7 +14,7 @@ class NavigationAgent:
         self.description = description
         self.capabilities = capabilities
 
-    def handle(self, query: str, context: Optional[Dict[str, Any]] = None) -> AgentResponse:
+    def handle(self, query: str, context: AgentContext  = None) -> AgentResponse:
         message = "已为你规划一条避开拥堵的路线，预计30分钟到达。"
         if "最快" in query or "快速" in query:
             message = "已切换至最快路线，预计25分钟到达。"
@@ -22,6 +23,7 @@ class NavigationAgent:
         return AgentResponse(
             agent=self.name,
             success=True,
+            query=query,
             message=message,
             data={"eta_minutes": 25 if "最快" in query else 30}
         )

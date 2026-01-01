@@ -9,6 +9,7 @@ from .vad_adapter import VADModuleAdapter
 from .asr_adapter import ASRModuleAdapter
 from .gui_adapter import GUIModuleAdapter
 from .tts_adapter import TTSModuleAdapter
+from .memory_adapter import MemoryModuleAdapter
 
 __all__ = [
     'AudioModuleAdapter',
@@ -17,4 +18,5 @@ __all__ = [
     'ASRModuleAdapter',
     'GUIModuleAdapter',
     'TTSModuleAdapter',
+    'MemoryModuleAdapter',
 ]

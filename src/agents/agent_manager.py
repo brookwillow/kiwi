@@ -11,6 +11,7 @@ from src.core.interfaces import IModule
 from src.core.events import Event, EventType
 from src.agents.registry import create_agent
 from src.agents.base import AgentResponse
+from src.core.events import AgentContext, SystemState
 
 
 class AgentsModule(IModule):
@@ -21,7 +22,8 @@ class AgentsModule(IModule):
     implementations live under `src.agents`.
     """
 
-    def __init__(self, config_path: str = "config/agents_config.yaml"):
+    def __init__(self, controller, config_path: str = "config/agents_config.yaml"):
+        self.controller = controller
         self._name = "agents"
         self._running = False
         self._agents: List[Dict[str, Any]] = []
@@ -102,13 +104,93 @@ class AgentsModule(IModule):
             if agent.get('name') == name:
                 return agent.copy()
         return None
+    
+    def _get_short_term_memories(self, query: str, max_count: int = 5):
+        """
+        从memory模块获取短期记忆
+        
+        Args:
+            query: 查询内容
+            max_count: 最大返回数量
+            
+        Returns:
+            短期记忆列表
+        """
+        memory_module = self.controller.get_module('memory')
+        if memory_module and hasattr(memory_module, 'get_short_term_memories'):
+            return memory_module.get_short_term_memories(max_count)
+        return []
+    
+    def _get_long_term_memory(self):
+        """
+        从memory模块获取长期记忆
+        
+        Returns:
+            长期记忆（如果存在）
+        """
+        memory_module = self.controller.get_module('memory')
+        if memory_module and hasattr(memory_module, 'get_related_long_term_memory'):
+            return memory_module.get_related_long_term_memory()
+        return None
+    
+    def _get_system_states(self, query: str):
+        """
+        从perception模块获取系统状态
+        
+        Args:
+            query: 查询内容
+            
+        Returns:
+            系统状态列表
+        """
+        # 通过controller获取perception模块
+        perception_module = self.controller.get_module('perception')
+        if perception_module and hasattr(perception_module, 'get_all_states'):
+            states = perception_module.get_all_states()
+            return [
+                SystemState(
+                    state_type=state.get('type', 'unknown'),
+                    state_data=state.get('data', {}),
+                    timestamp=state.get('timestamp', time.time())
+                )
+                for state in states
+            ]
+        return []
+    
+    def get_agent_context(self, query:str, agent_name: str) -> AgentContext:
+        agent = self.get_agent_by_name(agent_name)
+        if not agent:
+            return {}
+        
+        agent_info = {
+            'name': agent.get('name', ''),
+            'description': agent.get('description', ''),
+            'capabilities': agent.get('capabilities', []),
+        }
+
+        # 1. 从memory模块召回短期记忆（对话历史）
+        short_term_memories = self._get_short_term_memories(query)
+            
+        # 2. 从memory模块召回长期记忆（用户画像）
+        long_term_memory = self._get_long_term_memory()
+            
+        # 3. 从perception模块召回系统状态
+        system_states = self._get_system_states(query)
+        
+        context = AgentContext(
+            short_term_memories=short_term_memories,
+            long_term_memory=long_term_memory,
+            system_states=system_states
+        )
+
+        return context
 
     def execute_agent(self, agent_name: str, query: str, context: Optional[Dict[str, Any]] = None) -> AgentResponse:
         handler = self._agent_handlers.get(agent_name)
         if not handler:
             message = f"Agent {agent_name} 未启用或不存在，已忽略请求。"
             return AgentResponse(agent=agent_name, success=False, message=message, data={})
-        return handler.handle(query=query, context=context or {})
+        return handler.handle(query=query, context=self.get_agent_context(query=query, agent_name=agent_name))
 
     def get_statistics(self) -> Dict[str, Any]:
         enabled_count = sum(1 for a in self._agents if a.get('enabled', True))

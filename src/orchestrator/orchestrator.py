@@ -5,12 +5,9 @@ Orchestrator - 编排者模块
 """
 import time
 from typing import Optional, Dict, Any, TYPE_CHECKING
-
-from .types import (
-    QueryType, OrchestratorInput, OrchestratorContext, 
-    OrchestratorDecision, ShortTermMemory, SystemState, AgentInfo
-)
+from src.core.events import OrchestratorContext, OrchestratorInput, OrchestratorDecision, QueryType, SystemState, AgentInfo
 from .llm_decision import LLMDecisionMaker, MockLLMDecisionMaker
+from src.core.events import ShortTermMemory, LongTermMemory
 
 if TYPE_CHECKING:
     from ..core.controller import SystemController
@@ -96,16 +93,13 @@ class Orchestrator:
             # 7. LLM决策
             decision = self.decision_maker.make_decision(context)
             
-            # 8. 通知memory模块记录查询
-            self._record_query(query_content, query_type)
-            
-            # 9. 更新统计
+            # 8. 更新统计
             if decision.confidence > 0.5:
                 self._statistics["successful_decisions"] += 1
             else:
                 self._statistics["failed_decisions"] += 1
             
-            # 10. 输出决策信息
+            # 9. 输出决策信息
             print(f"\n{'='*60}")
             print(f"📊 Orchestrator 决策结果")
             print(f"{'='*60}")
@@ -142,19 +136,9 @@ class Orchestrator:
         Returns:
             短期记忆列表
         """
-        # 通过controller获取memory模块
         memory_module = self.controller.get_module('memory')
-        if memory_module and hasattr(memory_module, 'get_recent_conversations'):
-            conversations = memory_module.get_recent_conversations(max_count)
-            return [
-                ShortTermMemory(
-                    role=conv.get('role', 'user'),
-                    content=conv.get('content', ''),
-                    timestamp=conv.get('timestamp', time.time()),
-                    metadata=conv.get('metadata', {})
-                )
-                for conv in conversations
-            ]
+        if memory_module and hasattr(memory_module, 'get_short_term_memories'):
+            return memory_module.get_short_term_memories(max_count)
         return []
     
     def _get_long_term_memory(self):
@@ -164,18 +148,9 @@ class Orchestrator:
         Returns:
             长期记忆（如果存在）
         """
-        # 通过controller获取memory模块
         memory_module = self.controller.get_module('memory')
-        if memory_module and hasattr(memory_module, 'get_user_profile'):
-            profile = memory_module.get_user_profile()
-            if profile:
-                from .types import LongTermMemory
-                return LongTermMemory(
-                    summary=profile.get('summary', ''),
-                    user_profile=profile.get('profile', {}),
-                    preferences=profile.get('preferences', {}),
-                    metadata=profile.get('metadata', {})
-                )
+        if memory_module and hasattr(memory_module, 'get_related_long_term_memory'):
+            return memory_module.get_related_long_term_memory()
         return None
     
     def _get_system_states(self, query: str):
@@ -225,37 +200,6 @@ class Orchestrator:
             ]
         return []
     
-    def _record_query(self, query_content: str, query_type: QueryType):
-        """
-        记录查询到memory模块
-        
-        Args:
-            query_content: 查询内容
-            query_type: 查询类型
-        """
-        memory_module = self.controller.get_module('memory')
-        if memory_module and hasattr(memory_module, 'add_conversation'):
-            memory_module.add_conversation(
-                role='user',
-                content=query_content,
-                metadata={'query_type': query_type.value, 'timestamp': time.time()}
-            )
-    
-    def record_agent_response(self, agent_name: str, response: str):
-        """
-        记录Agent响应到memory模块
-        
-        Args:
-            agent_name: Agent名称
-            response: 响应内容
-        """
-        memory_module = self.controller.get_module('memory')
-        if memory_module and hasattr(memory_module, 'add_conversation'):
-            memory_module.add_conversation(
-                role='assistant',
-                content=response,
-                metadata={'agent': agent_name, 'timestamp': time.time()}
-            )
     
     def get_statistics(self) -> Dict[str, Any]:
         """

@@ -2,6 +2,6 @@
 
 from .base import AgentResponse, BaseAgent
 from .registry import create_agent
-from .module import AgentsModule
+from .agent_manager import AgentsModule
 
 __all__ = ["AgentResponse", "BaseAgent", "create_agent", "AgentsModule"]

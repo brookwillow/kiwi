@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Dict, Any, Optional
 
 from src.agents.base import AgentResponse
+from src.core.events import AgentContext
 
 
 class VehicleControlAgent:
@@ -13,7 +14,7 @@ class VehicleControlAgent:
         self.description = description
         self.capabilities = capabilities
 
-    def handle(self, query: str, context: Optional[Dict[str, Any]] = None) -> AgentResponse:
+    def handle(self, query: str, context: AgentContext  = None) -> AgentResponse:
         q = query.lower()
         if "窗" in q or "window" in q:
             message = "车窗已调整，注意外面的风哦。"
@@ -23,4 +24,4 @@ class VehicleControlAgent:
             message = "座椅位置已微调，坐姿更放松。"
         else:
             message = "车辆控制中心已待命，可以帮你调节空调、座椅或车窗。"
-        return AgentResponse(agent=self.name, success=True, message=message, data={"action": "vehicle_control"})
+        return AgentResponse(agent=self.name, success=True, query=query, message=message, data={"action": "vehicle_control"})

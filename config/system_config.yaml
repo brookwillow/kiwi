@@ -22,13 +22,13 @@ modules:
   vad:
     enabled: true            # 是否启用VAD检测
     frame_duration_ms: 30    # 帧长度（10/20/30ms）
-    aggressiveness: 0        # VAD激进程度（0-3）- 提高到2，减少对环境噪音的敏感度
+    aggressiveness: 3        # VAD激进程度（0-3）- 提高到2，减少对环境噪音的敏感度
     silence_timeout_ms: 500  # 静音超时（ms）- 降低到500ms，更容易结束语音片段
     pre_speech_buffer_ms: 300  # 语音前缓冲（ms）
     min_speech_duration_ms: 500  # 最小语音长度（ms）- 提高到500ms，过滤短音
     min_volume_threshold: 0.01  # 最小音量阈值（0-1）- 低于此值的音频片段会被忽略
     wakeword_delay_ms: 500   # 唤醒后延迟（ms）- 唤醒词检测后多久开始VAD检测
-    vad_end_silence_ms: 1000 # VAD结束判定静音时长（ms）- VAD=0后需要持续多久才算真正结束
+    vad_end_silence_ms: 700 # VAD结束判定静音时长（ms）- VAD=0后需要持续多久才算真正结束
   
   # ASR 模块
   asr:
@@ -42,6 +42,15 @@ modules:
     enabled: true            # 是否启用Orchestrator
     use_mock_llm: false       # 是否使用模拟LLM（true=模拟，false=真实LLM）
     default_agent: "chat_agent"  # 默认Agent
+  
+  # Memory 模块
+  memory:
+    enabled: true            # 是否启用Memory模块
+    max_short_term: 100      # 最大短期记忆数量
+    # 长期记忆生成配置
+    long_term_generation:
+      trigger_count: 5      # 每积累多少条短期记忆触发一次长期记忆生成
+      max_history_rounds: 10 # 生成长期记忆时最多使用多少轮对话历史
     
 # 工作模式
 # mode 1: 完整模式 (录音 -> 唤醒 -> VAD -> ASR)

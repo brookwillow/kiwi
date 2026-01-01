@@ -145,11 +145,6 @@ class OrchestratorModuleAdapter(IModule):
             agent_response = self._dispatch_to_agent(decision.selected_agent, text, decision)
             
             if agent_response:
-                # 记录Agent真实响应
-                self._orchestrator.record_agent_response(
-                    agent_name=agent_response.agent,
-                    response=agent_response.message
-                )
                 self._publish_agent_response(agent_response)
             
         except Exception as e:
@@ -216,6 +211,7 @@ class OrchestratorModuleAdapter(IModule):
             data={
                 'type': 'agent_response',
                 'agent': response.agent,
+                'query': response.query,
                 'message': response.message,
                 'success': response.success,
                 'data': response.data

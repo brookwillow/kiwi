@@ -38,6 +38,7 @@ class Config:
     vad: ModuleConfig
     asr: ModuleConfig
     orchestrator: ModuleConfig
+    memory: ModuleConfig
     working_mode: int
     
     @property
@@ -148,6 +149,19 @@ class ConfigManager:
             }
         )
         
+        # Memory配置
+        memory_data = data['modules'].get('memory', {})
+        memory = ModuleConfig(
+            enabled=memory_data.get('enabled', True),
+            settings={
+                'max_short_term': memory_data.get('max_short_term', 100),
+                'long_term_generation': memory_data.get('long_term_generation', {
+                    'trigger_count': 10,
+                    'max_history_rounds': 30
+                })
+            }
+        )
+        
         working_mode = data.get('working_mode', 3)
         
         return Config(
@@ -157,6 +171,7 @@ class ConfigManager:
             vad=vad,
             asr=asr,
             orchestrator=orchestrator,
+            memory=memory,
             working_mode=working_mode
         )
     
