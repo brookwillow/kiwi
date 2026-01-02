@@ -191,7 +191,14 @@ class MockLLMDecisionMaker:
             "车窗": "vehicle_control_agent",
             "空调": "vehicle_control_agent",
             "座椅": "vehicle_control_agent",
-            "车门": "vehicle_control_agent"
+            "车门": "vehicle_control_agent",
+            "打电话": "phone_agent",
+            "拨打": "phone_agent",
+            "呼叫": "phone_agent",
+            "联系": "phone_agent",
+            "电话": "phone_agent",
+            "发消息": "phone_agent",
+            "发短信": "phone_agent"
         }
     
     def make_decision(self, context: OrchestratorContext) -> OrchestratorDecision:

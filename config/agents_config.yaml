@@ -48,5 +48,15 @@ agents:
     capabilities:
       - "日常对话"
       - "讲笑话"
-      - "回答常识问题"
-      - "情感交互"
+      - "回答问题"
+  
+  - name: "phone_agent"
+    description: "电话通信Agent，负责处理电话和通信相关的请求"
+    enabled: true
+    capabilities:
+      - "拨打电话"
+      - "接听电话"
+      - "挂断电话"
+      - "发送消息"
+      - "读取消息"
+      - "勿扰模式"

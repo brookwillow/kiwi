@@ -4,6 +4,7 @@ Kiwi 语音助手 - 新架构GUI主程序
 使用 SystemController 和事件驱动架构的完整GUI实现
 """
 import sys
+import json
 import numpy as np
 from collections import deque
 from typing import Optional
@@ -11,7 +12,8 @@ import pyqtgraph as pg
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, 
     QHBoxLayout, QPushButton, QLabel, QComboBox, QTextEdit,
-    QGroupBox, QCheckBox, QLineEdit
+    QGroupBox, QCheckBox, QLineEdit, QDialog, QTableWidget, QTableWidgetItem,
+    QHeaderView
 )
 from PyQt5.QtCore import QTimer, Qt, QPropertyAnimation, QEasingCurve, pyqtProperty
 from PyQt5.QtGui import QFont, QColor
@@ -277,12 +279,6 @@ class KiwiVoiceAssistantGUI(QWidget):
         
         layout.addLayout(memory_layout)
         
-        # Orchestrator统计
-        self.orchestrator_stats_label = QLabel("Orchestrator统计: --")
-        self.orchestrator_stats_label.setFont(QFont("Courier", 9))
-        self.orchestrator_stats_label.setStyleSheet("padding: 5px; background-color: #fafafa;")
-        layout.addWidget(self.orchestrator_stats_label)
-        
         group.setLayout(layout)
         return group
     
@@ -320,6 +316,24 @@ class KiwiVoiceAssistantGUI(QWidget):
         layout.addWidget(self.send_btn)
         
         layout.addStretch()
+        
+        # 查看状态按钮
+        self.view_state_btn = QPushButton("系统状态")
+        self.view_state_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #9C27B0;
+                color: white;
+                font-size: 12px;
+                font-weight: bold;
+                padding: 8px 16px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #7B1FA2;
+            }
+        """)
+        self.view_state_btn.clicked.connect(self.show_state_dialog)
+        layout.addWidget(self.view_state_btn)
         
         # 启动/停止按钮
         self.start_btn = QPushButton("▶️ 启动系统")
@@ -552,10 +566,15 @@ class KiwiVoiceAssistantGUI(QWidget):
             self.memory_adapter = MemoryModuleAdapter(self.controller, api_key=api_key)
             self.controller.register_module(self.memory_adapter)
             
-            # 9. 连接GUI信号处理器
+            # 9. 创建并注册Execution模块（全局单例）
+            from src.execution import get_execution_manager
+            self.execution_module = get_execution_manager()
+            self.controller.register_module(self.execution_module)
+            
+            # 10. 连接GUI信号处理器
             self.connect_gui_signals()
             
-            # 10. 创建状态机配置
+            # 11. 创建状态机配置
             from src.state_machine import StateConfig
             state_config = StateConfig(
                 enable_wakeword=True,
@@ -566,15 +585,15 @@ class KiwiVoiceAssistantGUI(QWidget):
                 debug=False
             )
             
-            # 11. 初始化所有模块
+            # 12. 初始化所有模块
             if not self.controller.initialize_all(state_config):
                 raise Exception("模块初始化失败")
             
-            # 12. 启动所有模块
+            # 13. 启动所有模块
             if not self.controller.start_all():
                 raise Exception("模块启动失败")
             
-            # 13. 更新UI状态
+            # 14. 更新UI状态
             self.is_running = True
             self.start_btn.setText("⏸️ 停止系统")
             self.start_btn.setStyleSheet("""
@@ -734,7 +753,7 @@ class KiwiVoiceAssistantGUI(QWidget):
             icon: 状态图标
             text: 显示文本
             color_start: 渐变起始颜色
-            color_end: 渐变结束颜色
+            color_end: 渊变结束颜色
             border_color: 边框颜色
         """
         self.status_label.setText(f"{icon} {text}")
@@ -895,6 +914,7 @@ class KiwiVoiceAssistantGUI(QWidget):
             'vehicle_control_agent': '#fff3e0',  # 浅橙
             'weather_agent': '#e0f2f1',  # 浅青
             'chat_agent': '#fce4ec',  # 浅粉
+            'phone_agent': '#e8f5e9',  # 浅绿
         }
         bg_color = agent_colors.get(agent, '#e3f2fd')
         self.selected_agent_label.setStyleSheet(f"""
@@ -1120,11 +1140,175 @@ class KiwiVoiceAssistantGUI(QWidget):
         except Exception as e:
             print(f"⚠️ 更新长期记忆显示失败: {e}")
     
+    def show_state_dialog(self):
+        """显示系统状态对话框"""
+        if not self.controller:
+            return
+        
+        # 创建并显示对话框
+        dialog = SystemStateDialog(self.controller, self)
+        dialog.exec_()
+    
     def closeEvent(self, event):
         """窗口关闭事件"""
         if self.is_running:
             self.stop_system()
         event.accept()
+
+
+class SystemStateDialog(QDialog):
+    """系统状态显示对话框"""
+    
+    def __init__(self, controller: SystemController, parent=None):
+        super().__init__(parent)
+        self.controller = controller
+        self.setWindowTitle("系统状态")
+        self.setMinimumSize(800, 600)
+        self.init_ui()
+        self.load_states()
+        
+        # 自动刷新定时器
+        self.refresh_timer = QTimer()
+        self.refresh_timer.timeout.connect(self.load_states)
+        self.refresh_timer.start(1000)  # 每秒刷新
+    
+    def init_ui(self):
+        """初始化UI"""
+        layout = QVBoxLayout()
+        
+        # 标题
+        title = QLabel("系统状态监控")
+        title.setFont(QFont("Arial", 16, QFont.Bold))
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+        
+        # 状态表格
+        self.state_table = QTableWidget()
+        self.state_table.setColumnCount(3)
+        self.state_table.setHorizontalHeaderLabels(["状态项", "当前值", "类型"])
+        
+        # 设置列宽
+        header = self.state_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        
+        # 设置样式
+        self.state_table.setStyleSheet("""
+            QTableWidget {
+                background-color: #2b2b2b;
+                color: #ffffff;
+                gridline-color: #555555;
+                font-size: 12px;
+            }
+            QTableWidget::item {
+                padding: 5px;
+            }
+            QHeaderView::section {
+                background-color: #1976D2;
+                color: white;
+                padding: 8px;
+                font-weight: bold;
+                border: none;
+            }
+        """)
+        
+        layout.addWidget(self.state_table)
+        
+        # 按钮区域
+        button_layout = QHBoxLayout()
+        
+        refresh_btn = QPushButton("🔄 刷新")
+        refresh_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                font-size: 12px;
+                padding: 8px 16px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+        """)
+        refresh_btn.clicked.connect(self.load_states)
+        button_layout.addWidget(refresh_btn)
+        
+        button_layout.addStretch()
+        
+        close_btn = QPushButton("关闭")
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f44336;
+                color: white;
+                font-size: 12px;
+                padding: 8px 16px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #d32f2f;
+            }
+        """)
+        close_btn.clicked.connect(self.close)
+        button_layout.addWidget(close_btn)
+        
+        layout.addLayout(button_layout)
+        
+        self.setLayout(layout)
+    
+    def load_states(self):
+        """加载系统状态"""
+        try:
+            # 从execution模块获取所有状态
+            execution_module = self.controller.get_module('execution')
+            if not execution_module:
+                return
+            
+            # 获取所有状态
+            states = execution_module.get_all_states()
+            
+            # 更新表格
+            self.state_table.setRowCount(len(states))
+            
+            # 填充数据
+            for row, (key, value) in enumerate(sorted(states.items())):
+                # 状态名 - 直接使用原始 key
+                name_item = QTableWidgetItem(key)
+                name_item.setFont(QFont("Arial", 11))
+                self.state_table.setItem(row, 0, name_item)
+                
+                # 状态值 - 移除所有表情符号
+                if isinstance(value, bool):
+                    value_str = str(value)
+                    value_item = QTableWidgetItem(value_str)
+                    if value:
+                        value_item.setForeground(QColor(76, 175, 80))  # 绿色
+                    else:
+                        value_item.setForeground(QColor(158, 158, 158))  # 灰色
+                elif isinstance(value, (int, float)):
+                    value_str = f"{value:.1f}" if isinstance(value, float) else str(value)
+                    value_item = QTableWidgetItem(value_str)
+                    value_item.setForeground(QColor(33, 150, 243))  # 蓝色
+                elif isinstance(value, dict):
+                    # 对于字典类型，显示简化的内容
+                    value_str = json.dumps(value, ensure_ascii=False)
+                    value_item = QTableWidgetItem(value_str)
+                else:
+                    value_str = str(value) if value else "-"
+                    value_item = QTableWidgetItem(value_str)
+                
+                value_item.setFont(QFont("Arial", 11, QFont.Bold))
+                self.state_table.setItem(row, 1, value_item)
+                
+                # 类型
+                type_item = QTableWidgetItem(type(value).__name__)
+                type_item.setForeground(QColor(156, 39, 176))  # 紫色
+                self.state_table.setItem(row, 2, type_item)
+        
+        except Exception as e:
+            print(f"❌ 加载状态失败: {e}")
+            import traceback
+            traceback.print_exc()
 
 
 def main():

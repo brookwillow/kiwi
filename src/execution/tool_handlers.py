@@ -142,18 +142,12 @@ class ToolHandlers:
     
     async def play_music(self, **kwargs) -> Dict[str, Any]:
         """播放音乐"""
-        self.vehicle.update_values({
-            "music_playing": True,
-            "music_paused": False
-        })
+        self.vehicle.set_value("music_playing", True)
         return {"success": True, "message": "音乐播放中"}
     
     async def pause_music(self, **kwargs) -> Dict[str, Any]:
         """暂停音乐"""
-        self.vehicle.update_values({
-            "music_playing": False,
-            "music_paused": True
-        })
+        self.vehicle.set_value("music_playing", False)
         return {"success": True, "message": "音乐已暂停"}
     
     async def set_volume(self, volume: int, **kwargs) -> Dict[str, Any]:
@@ -370,6 +364,57 @@ class ToolHandlers:
         self.vehicle.set_value("ambient_light_color", color)
         return {"success": True, "message": f"氛围主题已设置为: {theme}"}
     
+    # ==================== 通信系统 ====================
+    
+    async def make_call(self, contact: str, **kwargs) -> Dict[str, Any]:
+        """拨打电话"""
+        self.vehicle.update_values({
+            "call_active": True,
+            "call_contact": contact
+        })
+        return {"success": True, "message": f"正在呼叫 {contact}...", "contact": contact}
+    
+    async def answer_call(self, **kwargs) -> Dict[str, Any]:
+        """接听电话"""
+        self.vehicle.set_value("call_active", True)
+        return {"success": True, "message": "已接听来电"}
+    
+    async def end_call(self, **kwargs) -> Dict[str, Any]:
+        """挂断电话"""
+        self.vehicle.update_values({
+            "call_active": False,
+            "call_contact": ""
+        })
+        return {"success": True, "message": "已挂断电话"}
+    
+    async def send_message(self, recipient: str, message: str, **kwargs) -> Dict[str, Any]:
+        """发送消息"""
+        return {
+            "success": True, 
+            "message": f"已发送消息给 {recipient}: {message}",
+            "recipient": recipient,
+            "content": message
+        }
+    
+    async def read_messages(self, **kwargs) -> Dict[str, Any]:
+        """读取消息"""
+        return {"success": True, "message": "没有新消息"}
+    
+    async def enable_do_not_disturb(self, **kwargs) -> Dict[str, Any]:
+        """开启勿扰模式"""
+        self.vehicle.set_value("do_not_disturb", True)
+        return {"success": True, "message": "勿扰模式已开启"}
+    
+    async def disable_do_not_disturb(self, **kwargs) -> Dict[str, Any]:
+        """关闭勿扰模式"""
+        self.vehicle.set_value("do_not_disturb", False)
+        return {"success": True, "message": "勿扰模式已关闭"}
+    
+    async def switch_call_audio(self, device: str, **kwargs) -> Dict[str, Any]:
+        """切换通话音频"""
+        self.vehicle.set_value("call_audio_device", device)
+        return {"success": True, "message": f"已切换到 {device} 设备", "device": device}
+    
     # ==================== 信息查询 ====================
     
     async def get_fuel_level(self, **kwargs) -> Dict[str, Any]:
@@ -387,14 +432,187 @@ class ToolHandlers:
         speed = self.vehicle.get_speed()
         return {"success": True, "message": f"当前车速: {speed} km/h", "value": speed}
     
-    async def get_vehicle_status(self, **kwargs) -> Dict[str, Any]:
-        """查询车辆状态"""
-        state_dict = self.vehicle.to_dict()
+    # ==================== 单个状态查询 ====================
+    
+    async def get_engine_status(self, **kwargs) -> Dict[str, Any]:
+        """查询发动机状态"""
+        running = self.vehicle.state.engine_running
+        return {"success": True, "message": f"发动机: {'运行中' if running else '熄火'}", "value": running}
+    
+    async def get_lock_status(self, **kwargs) -> Dict[str, Any]:
+        """查询车辆锁定状态"""
+        locked = self.vehicle.state.doors_locked
+        return {"success": True, "message": f"车辆: {'已锁定' if locked else '已解锁'}", "value": locked}
+    
+    async def get_driving_mode(self, **kwargs) -> Dict[str, Any]:
+        """查询驾驶模式"""
+        mode = self.vehicle.state.driving_mode
+        return {"success": True, "message": f"当前驾驶模式: {mode}", "value": mode}
+    
+    async def get_parking_brake_status(self, **kwargs) -> Dict[str, Any]:
+        """查询手刹状态"""
+        engaged = self.vehicle.state.parking_brake
+        return {"success": True, "message": f"手刹: {'拉起' if engaged else '放下'}", "value": engaged}
+    
+    async def get_cruise_control_status(self, **kwargs) -> Dict[str, Any]:
+        """查询定速巡航状态"""
+        enabled = self.vehicle.state.cruise_control_enabled
+        speed = self.vehicle.state.cruise_control_speed
+        return {
+            "success": True, 
+            "message": f"定速巡航: {'开启' if enabled else '关闭'}{f' {speed}km/h' if enabled else ''}",
+            "enabled": enabled,
+            "speed": speed
+        }
+    
+    async def get_ac_status(self, **kwargs) -> Dict[str, Any]:
+        """查询空调状态"""
+        ac_on = self.vehicle.state.ac_on
+        return {"success": True, "message": f"空调: {'开启' if ac_on else '关闭'}", "value": ac_on}
+    
+    async def get_temperature(self, zone: str = "driver", **kwargs) -> Dict[str, Any]:
+        """查询温度设置"""
+        temp = self.vehicle.state.temperature.get(zone, 22.0)
+        return {"success": True, "message": f"{zone} 温度: {temp}℃", "value": temp}
+    
+    async def get_fan_speed(self, **kwargs) -> Dict[str, Any]:
+        """查询风速"""
+        speed = self.vehicle.state.fan_speed
+        return {"success": True, "message": f"风速: {speed}级", "value": speed}
+    
+    async def get_auto_climate_status(self, **kwargs) -> Dict[str, Any]:
+        """查询自动空调状态"""
+        auto = self.vehicle.state.auto_climate
+        return {"success": True, "message": f"自动空调: {'开启' if auto else '关闭'}", "value": auto}
+    
+    async def get_music_status(self, **kwargs) -> Dict[str, Any]:
+        """查询音乐状态"""
+        playing = self.vehicle.state.music_playing
+        return {
+            "success": True, 
+            "message": f"音乐: {'播放中' if playing else '已暂停'}",
+            "playing": playing
+        }
+    
+    async def get_volume(self, **kwargs) -> Dict[str, Any]:
+        """查询音量"""
+        volume = self.vehicle.get_volume()
+        return {"success": True, "message": f"当前音量: {volume}", "value": volume}
+    
+    async def get_mute_status(self, **kwargs) -> Dict[str, Any]:
+        """查询静音状态"""
+        muted = self.vehicle.state.muted
+        return {"success": True, "message": f"静音: {'是' if muted else '否'}", "value": muted}
+    
+    async def get_bluetooth_status(self, **kwargs) -> Dict[str, Any]:
+        """查询蓝牙状态"""
+        enabled = self.vehicle.state.bluetooth_enabled
+        return {"success": True, "message": f"蓝牙: {'已连接' if enabled else '未连接'}", "value": enabled}
+    
+    async def get_navigation_status(self, **kwargs) -> Dict[str, Any]:
+        """查询导航状态"""
+        active = self.vehicle.state.navigation_active
+        destination = self.vehicle.state.navigation_destination
         return {
             "success": True,
-            "message": "车辆状态查询成功",
-            "state": state_dict
+            "message": f"导航: {'活跃' if active else '未激活'}{f' - {destination}' if active else ''}",
+            "active": active,
+            "destination": destination
         }
+    
+    async def get_window_status(self, window: str = "driver", **kwargs) -> Dict[str, Any]:
+        """查询车窗状态"""
+        position = self.vehicle.state.windows.get(window, 0)
+        return {"success": True, "message": f"{window} 车窗: {position}%", "value": position}
+    
+    async def get_sunroof_status(self, **kwargs) -> Dict[str, Any]:
+        """查询天窗状态"""
+        position = self.vehicle.state.sunroof_position
+        tilted = self.vehicle.state.sunroof_tilted
+        return {
+            "success": True,
+            "message": f"天窗: {position}%{' (翻起)' if tilted else ''}",
+            "position": position,
+            "tilted": tilted
+        }
+    
+    async def get_headlight_status(self, **kwargs) -> Dict[str, Any]:
+        """查询大灯状态"""
+        on = self.vehicle.state.headlights_on
+        mode = self.vehicle.state.headlight_mode
+        return {
+            "success": True,
+            "message": f"大灯: {'开启' if on else '关闭'} - 模式: {mode}",
+            "on": on,
+            "mode": mode
+        }
+    
+    async def get_ambient_light_status(self, **kwargs) -> Dict[str, Any]:
+        """查询氛围灯状态"""
+        on = self.vehicle.state.ambient_lights_on
+        color = self.vehicle.state.ambient_light_color
+        brightness = self.vehicle.state.ambient_light_brightness
+        return {
+            "success": True,
+            "message": f"氛围灯: {'开启' if on else '关闭'} - 颜色: {color} - 亮度: {brightness}",
+            "on": on,
+            "color": color,
+            "brightness": brightness
+        }
+    
+    async def get_lane_assist_status(self, **kwargs) -> Dict[str, Any]:
+        """查询车道保持状态"""
+        enabled = self.vehicle.state.lane_assist
+        return {"success": True, "message": f"车道保持: {'开启' if enabled else '关闭'}", "value": enabled}
+    
+    async def get_autopilot_status(self, **kwargs) -> Dict[str, Any]:
+        """查询自动驾驶状态"""
+        enabled = self.vehicle.state.autopilot
+        return {"success": True, "message": f"自动驾驶: {'开启' if enabled else '关闭'}", "value": enabled}
+    
+    async def get_door_status(self, door: str = "driver", **kwargs) -> Dict[str, Any]:
+        """查询车门状态"""
+        open_status = self.vehicle.state.doors_open.get(door, False)
+        return {"success": True, "message": f"{door} 车门: {'打开' if open_status else '关闭'}", "value": open_status}
+    
+    async def get_trunk_status(self, **kwargs) -> Dict[str, Any]:
+        """查询后备箱状态"""
+        open_status = self.vehicle.state.trunk_open
+        return {"success": True, "message": f"后备箱: {'打开' if open_status else '关闭'}", "value": open_status}
+    
+    async def get_wiper_status(self, **kwargs) -> Dict[str, Any]:
+        """查询雨刷状态"""
+        on = self.vehicle.state.wipers_on
+        speed = self.vehicle.state.wiper_speed
+        auto = self.vehicle.state.auto_wipers
+        return {
+            "success": True,
+            "message": f"雨刷: {'开启' if on else '关闭'} - 速度: {speed} - 自动: {'是' if auto else '否'}",
+            "on": on,
+            "speed": speed,
+            "auto": auto
+        }
+    
+    async def get_call_status(self, **kwargs) -> Dict[str, Any]:
+        """查询通话状态"""
+        active = self.vehicle.state.call_active
+        contact = self.vehicle.state.call_contact
+        return {
+            "success": True,
+            "message": f"通话: {'进行中' if active else '无通话'}{f' - {contact}' if active and contact else ''}",
+            "active": active,
+            "contact": contact
+        }
+    
+    async def get_do_not_disturb_status(self, **kwargs) -> Dict[str, Any]:
+        """查询勿扰模式状态"""
+        enabled = self.vehicle.state.do_not_disturb
+        return {"success": True, "message": f"勿扰模式: {'开启' if enabled else '关闭'}", "value": enabled}
+    
+    async def get_call_audio_device(self, **kwargs) -> Dict[str, Any]:
+        """查询通话音频设备"""
+        device = self.vehicle.state.call_audio_device
+        return {"success": True, "message": f"通话音频设备: {device}", "value": device}
 
 
 # 全局单例

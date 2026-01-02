@@ -9,6 +9,7 @@ from src.agents.handlers.navigation import NavigationAgent
 from src.agents.handlers.vehicle import VehicleControlAgent
 from src.agents.handlers.weather import WeatherAgent
 from src.agents.handlers.chat import ChatAgent
+from src.agents.handlers.phone import PhoneAgent
 
 
 class GenericAgent:
@@ -33,11 +34,12 @@ def get_agent_class(name: str):
         "vehicle_control_agent": VehicleControlAgent,
         "weather_agent": WeatherAgent,
         "chat_agent": ChatAgent,
+        "phone_agent": PhoneAgent,
     }
     return registry.get(name)
 
-def create_agent(name: str, description: str, capabilities: list[str]) -> BaseAgent:
+def create_agent(name: str, description: str, capabilities: list[str], api_key: str = None) -> BaseAgent:
     cls = get_agent_class(name)
     if cls:
-        return cls(description=description, capabilities=capabilities)
+        return cls(description=description, capabilities=capabilities, api_key=api_key)
     return GenericAgent(name=name, description=description, capabilities=capabilities)

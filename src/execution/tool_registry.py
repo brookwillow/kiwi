@@ -446,18 +446,76 @@ class ToolRegistry:
             ]),
         ])
         
-        # 10. 信息查询 (10个)
+        # 10. 信息查询 (30+个 - 单个状态查询)
         tools.extend([
+            # 基础信息
             Tool("get_fuel_level", "查询油量", ToolCategory.INFORMATION),
             Tool("get_battery_level", "查询电量", ToolCategory.INFORMATION),
+            Tool("get_speed", "查询当前车速", ToolCategory.INFORMATION),
+            Tool("get_engine_status", "查询发动机状态", ToolCategory.INFORMATION),
+            Tool("get_lock_status", "查询车辆锁定状态", ToolCategory.INFORMATION),
+            Tool("get_driving_mode", "查询驾驶模式", ToolCategory.INFORMATION),
+            Tool("get_parking_brake_status", "查询手刹状态", ToolCategory.INFORMATION),
+            Tool("get_cruise_control_status", "查询定速巡航状态", ToolCategory.INFORMATION),
+            
+            # 空调系统
+            Tool("get_ac_status", "查询空调状态", ToolCategory.INFORMATION),
+            Tool("get_temperature", "查询温度设置", ToolCategory.INFORMATION, [
+                ToolParameter("zone", "string", "区域", False,
+                            enum=["driver", "passenger", "rear_left", "rear_right"],
+                            default="driver")
+            ]),
+            Tool("get_fan_speed", "查询风速", ToolCategory.INFORMATION),
+            Tool("get_auto_climate_status", "查询自动空调状态", ToolCategory.INFORMATION),
+            
+            # 娱乐系统
+            Tool("get_music_status", "查询音乐状态", ToolCategory.INFORMATION),
+            Tool("get_volume", "查询音量", ToolCategory.INFORMATION),
+            Tool("get_mute_status", "查询静音状态", ToolCategory.INFORMATION),
+            Tool("get_bluetooth_status", "查询蓝牙状态", ToolCategory.INFORMATION),
+            
+            # 导航系统
+            Tool("get_navigation_status", "查询导航状态", ToolCategory.INFORMATION),
+            
+            # 车窗/天窗
+            Tool("get_window_status", "查询车窗状态", ToolCategory.INFORMATION, [
+                ToolParameter("window", "string", "车窗", False,
+                            enum=["driver", "passenger", "rear_left", "rear_right"],
+                            default="driver")
+            ]),
+            Tool("get_sunroof_status", "查询天窗状态", ToolCategory.INFORMATION),
+            
+            # 灯光
+            Tool("get_headlight_status", "查询大灯状态", ToolCategory.INFORMATION),
+            Tool("get_ambient_light_status", "查询氛围灯状态", ToolCategory.INFORMATION),
+            
+            # 安全辅助
+            Tool("get_lane_assist_status", "查询车道保持状态", ToolCategory.INFORMATION),
+            Tool("get_autopilot_status", "查询自动驾驶状态", ToolCategory.INFORMATION),
+            
+            # 车门/后备箱
+            Tool("get_door_status", "查询车门状态", ToolCategory.INFORMATION, [
+                ToolParameter("door", "string", "车门", False,
+                            enum=["driver", "passenger", "rear_left", "rear_right"],
+                            default="driver")
+            ]),
+            Tool("get_trunk_status", "查询后备箱状态", ToolCategory.INFORMATION),
+            
+            # 雨刷
+            Tool("get_wiper_status", "查询雨刷状态", ToolCategory.INFORMATION),
+            
+            # 通信状态
+            Tool("get_call_status", "查询通话状态", ToolCategory.INFORMATION),
+            Tool("get_do_not_disturb_status", "查询勿扰模式状态", ToolCategory.INFORMATION),
+            Tool("get_call_audio_device", "查询通话音频设备", ToolCategory.INFORMATION),
+            
+            # 其他查询（保留原有的）
             Tool("get_range", "查询续航里程", ToolCategory.INFORMATION),
             Tool("get_tire_pressure", "查询胎压", ToolCategory.INFORMATION),
-            Tool("get_speed", "查询当前车速", ToolCategory.INFORMATION),
             Tool("get_outside_temperature", "查询外部温度", ToolCategory.INFORMATION),
             Tool("get_mileage", "查询里程数", ToolCategory.INFORMATION),
             Tool("get_maintenance_info", "查询保养信息", ToolCategory.INFORMATION),
             Tool("get_trip_statistics", "查询行程统计", ToolCategory.INFORMATION),
-            Tool("get_vehicle_status", "查询车辆状态", ToolCategory.INFORMATION),
         ])
         
         # 11. 充电/加油 (5个)

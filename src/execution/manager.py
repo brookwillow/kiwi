@@ -30,12 +30,40 @@ class ExecutionManager:
         >>> # 获取工具列表
         >>> tools = manager.list_tools()
     """
+
+    @property
+    def name(self):
+        return "execution"
+
+    @property
+    def is_running(self):
+        return True
     
     def __init__(self):
         """初始化执行管理器"""
         self._registry: ToolRegistry = get_tool_registry()
         self._vehicle: VehicleStateManager = get_vehicle_state()
         self._mcp_server: MCPServer = get_mcp_server()
+    
+    def initialize(self) -> bool:
+        """初始化模块"""
+        return True
+
+    def start(self) -> bool:
+        """启动模块"""
+        return True
+
+    def stop(self):
+        """停止模块"""
+        pass
+
+    def cleanup(self):
+        """清理资源"""
+        pass
+
+    def handle_event(self, event):
+        """处理事件"""
+        pass
     
     # ==================== 工具执行相关 ====================
     

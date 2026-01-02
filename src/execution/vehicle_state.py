@@ -83,11 +83,17 @@ class VehicleState:
     
     # 娱乐系统
     music_playing: bool = False
-    music_paused: bool = False
     volume: int = 50  # 0-100
     muted: bool = False
     audio_source: str = "bluetooth"
     bluetooth_enabled: bool = True
+    
+    # 通信系统
+    call_active: bool = False
+    call_contact: str = ""
+    do_not_disturb: bool = False
+    call_audio_device: str = "car"  # car, phone
+    unread_messages: int = 0
     
     # 灯光系统
     headlights_on: bool = False

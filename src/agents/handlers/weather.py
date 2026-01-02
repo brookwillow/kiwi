@@ -5,20 +5,18 @@ from typing import Dict, Any, Optional
 
 from src.agents.base import AgentResponse
 from src.core.events import AgentContext
+from src.execution.tool_registry import ToolCategory
+from .base_tool_agent import BaseToolAgent
 
 
-class WeatherAgent:
+class WeatherAgent(BaseToolAgent):
     name = "weather_agent"
 
-    def __init__(self, description: str, capabilities: list[str]):
-        self.description = description
-        self.capabilities = capabilities
-
-    def handle(self, query: str, context: AgentContext  = None) -> AgentResponse:
-        location = "当前所在地"
-        if "北京" in query:
-            location = "北京"
-        elif "上海" in query:
-            location = "上海"
-        message = f"{location}现在气温22℃，微风，稍晚可能有阵雨，记得带伞。"
-        return AgentResponse(agent=self.name, success=True, query=query, message=message, data={"location": location})
+    def __init__(self, description: str, capabilities: list[str], api_key: Optional[str] = None):
+        super().__init__(
+            name=self.name,
+            description=description,
+            capabilities=capabilities,
+            tool_categories=[ToolCategory.INFORMATION],  # 天气相关工具
+            api_key=api_key
+        )

@@ -1,4 +1,4 @@
-"""Vehicle control agent."""
+"""Phone agent implementation."""
 from __future__ import annotations
 
 from typing import Dict, Any, Optional
@@ -9,8 +9,8 @@ from src.execution.tool_registry import ToolCategory
 from .base_tool_agent import BaseToolAgent
 
 
-class VehicleControlAgent(BaseToolAgent):
-    name = "vehicle_control_agent"
+class PhoneAgent(BaseToolAgent):
+    name = "phone_agent"
 
     def __init__(self, description: str, capabilities: list[str], api_key: Optional[str] = None):
         super().__init__(
@@ -18,13 +18,8 @@ class VehicleControlAgent(BaseToolAgent):
             description=description,
             capabilities=capabilities,
             tool_categories=[
-                ToolCategory.VEHICLE_CONTROL,
-                ToolCategory.CLIMATE,
-                ToolCategory.WINDOW,
-                ToolCategory.SEAT,
-                ToolCategory.LIGHTING,
-                ToolCategory.DOOR,
-                ToolCategory.INFORMATION  # 添加信息查询类别，支持状态查询
-            ],  # 车辆控制相关的所有工具
+                ToolCategory.COMMUNICATION,  # 通信系统工具
+                ToolCategory.INFORMATION      # 添加信息查询类别，支持状态查询
+            ],
             api_key=api_key
         )

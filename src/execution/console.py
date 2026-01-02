@@ -18,7 +18,7 @@ class VehicleConsole:
     def print_header(self):
         """打印标题"""
         print("\n" + "=" * 70)
-        print("🚗  KIWI 车辆控制台  🚗".center(70))
+        print("KIWI 车辆控制台".center(70))
         print("=" * 70)
         print(f"工具总数: {len(self.registry.tools)} | 分类: 15")
         print("=" * 70)
@@ -93,7 +93,7 @@ class VehicleConsole:
         
         tool = self.registry.get_tool(tool_name)
         if not tool:
-            print(f"❌ 工具 '{tool_name}' 不存在")
+            print(f"✖ 工具 '{tool_name}' 不存在")
             return
         
         print(f"\n工具: {tool.name}")
@@ -143,31 +143,32 @@ class VehicleConsole:
         state = self.vehicle.state
         
         print("\n【基本信息】")
-        print(f"  发动机: {'✅ 运行中' if self.vehicle.is_engine_running() else '❌ 熄火'}")
-        print(f"  车门: {'🔒 已锁定' if state.doors_locked else '🔓 已解锁'}")
+        print(f"  发动机: {'✓ 运行中' if self.vehicle.is_engine_running() else '✗ 熄火'}")
+        print(f"  车门: {'锁定' if state.doors_locked else '解锁'}")
         print(f"  车速: {self.vehicle.get_speed()} km/h")
         print(f"  油量: {self.vehicle.get_fuel_level()}%")
         print(f"  电量: {self.vehicle.get_battery_level()}%")
         print(f"  驾驶模式: {state.driving_mode}")
         
         print("\n【空调系统】")
-        print(f"  空调: {'✅ 开启' if state.ac_on else '❌ 关闭'}")
+        print(f"  空调: {'✓ 开启' if state.ac_on else '✗ 关闭'}")
         print(f"  驾驶侧温度: {self.vehicle.get_temperature('driver')}℃")
         print(f"  乘客侧温度: {self.vehicle.get_temperature('passenger')}℃")
         print(f"  风速: {state.fan_speed}级")
-        print(f"  自动模式: {'✅' if state.auto_climate else '❌'}")
+        print(f"  自动模式: {'✓' if state.auto_climate else '✗'}")
         
         print("\n【娱乐系统】")
-        print(f"  音乐: {'▶️  播放中' if state.music_playing else '⏸️  暂停'}")
+        print(f"  音乐: {'播放中' if state.music_playing else '已暂停'}")
         print(f"  音量: {self.vehicle.get_volume()}")
-        print(f"  静音: {'🔇 是' if state.muted else '🔊 否'}")
-        print(f"  蓝牙: {'✅ 已连接' if state.bluetooth_enabled else '❌ 未连接'}")
+        print(f"  静音: {'是' if state.muted else '否'}")
+        print(f"  音频源: {state.audio_source}")
+        print(f"  蓝牙: {'已连接' if state.bluetooth_enabled else '未连接'}")
         
         print("\n【导航系统】")
-        print(f"  导航: {'✅ 活跃' if state.navigation_active else '❌ 未激活'}")
+        print(f"  导航: {'活跃' if state.navigation_active else '未激活'}")
         if state.navigation_active:
             print(f"  目的地: {state.navigation_destination}")
-        print(f"  语音导航: {'✅' if state.voice_guidance else '❌'}")
+        print(f"  语音导航: {'✓' if state.voice_guidance else '✗'}")
         
         print("\n【车窗状态】")
         print(f"  驾驶侧: {state.windows['driver']}%")
@@ -175,14 +176,14 @@ class VehicleConsole:
         print(f"  天窗: {state.sunroof_position}%")
         
         print("\n【灯光】")
-        print(f"  大灯: {'✅' if state.headlights_on else '❌'} ({state.headlight_mode})")
-        print(f"  氛围灯: {'✅' if state.ambient_lights_on else '❌'} ({state.ambient_light_color})")
+        print(f"  大灯: {'✓' if state.headlights_on else '✗'} ({state.headlight_mode})")
+        print(f"  氛围灯: {'✓' if state.ambient_lights_on else '✗'} ({state.ambient_light_color})")
         
         print("\n【安全辅助】")
-        print(f"  车道保持: {'✅' if state.lane_assist else '❌'}")
-        print(f"  盲区监测: {'✅' if state.blind_spot_monitor else '❌'}")
-        print(f"  碰撞预警: {'✅' if state.collision_warning else '❌'}")
-        print(f"  定速巡航: {'✅ ' + str(state.cruise_control_speed) + ' km/h' if state.cruise_control_enabled else '❌'}")
+        print(f"  车道保持: {'✓' if state.lane_assist else '✗'}")
+        print(f"  盲区监测: {'✓' if state.blind_spot_monitor else '✗'}")
+        print(f"  碰撞预警: {'✓' if state.collision_warning else '✗'}")
+        print(f"  定速巡航: {'✓ ' + str(state.cruise_control_speed) + ' km/h' if state.cruise_control_enabled else '✗'}")
     
     async def quick_scenarios(self):
         """快捷场景"""
@@ -208,12 +209,12 @@ class VehicleConsole:
     
     async def scenario_start(self):
         """场景1: 启动车辆"""
-        print("\n🚗 启动车辆...")
+        print("\n启动车辆...")
         await self.registry.get_tool("unlock_vehicle").execute()
         print("  ✓ 解锁车辆")
         await self.registry.get_tool("start_engine").execute()
         print("  ✓ 启动发动机")
-        print("✅ 车辆已启动")
+        print("✓ 车辆已启动")
     
     async def scenario_comfort(self):
         """场景2: 舒适模式"""

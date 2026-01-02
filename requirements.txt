@@ -14,6 +14,7 @@ openai-whisper>=20230314
 
 # AI 框架
 ollama>=0.6.1
+openai>=1.0.0  # For qwen function calling via DashScope API
 
 # 工具库
 pyyaml>=6.0

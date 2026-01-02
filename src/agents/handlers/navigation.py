@@ -5,25 +5,21 @@ from typing import Dict, Any, Optional
 
 from src.agents.base import AgentResponse
 from src.core.events import AgentContext
+from src.execution.tool_registry import ToolCategory
+from .base_tool_agent import BaseToolAgent
 
 
-class NavigationAgent:
+class NavigationAgent(BaseToolAgent):
     name = "navigation_agent"
 
-    def __init__(self, description: str, capabilities: list[str]):
-        self.description = description
-        self.capabilities = capabilities
-
-    def handle(self, query: str, context: AgentContext  = None) -> AgentResponse:
-        message = "已为你规划一条避开拥堵的路线，预计30分钟到达。"
-        if "最快" in query or "快速" in query:
-            message = "已切换至最快路线，预计25分钟到达。"
-        elif "风景" in query or "景色" in query:
-            message = "选择了一条沿途风景优美的路线，放松一下吧。"
-        return AgentResponse(
-            agent=self.name,
-            success=True,
-            query=query,
-            message=message,
-            data={"eta_minutes": 25 if "最快" in query else 30}
+    def __init__(self, description: str, capabilities: list[str], api_key: Optional[str] = None):
+        super().__init__(
+            name=self.name,
+            description=description,
+            capabilities=capabilities,
+            tool_categories=[
+                ToolCategory.NAVIGATION,
+                ToolCategory.INFORMATION  # 添加信息查询类别，支持导航状态查询
+            ],
+            api_key=api_key
         )

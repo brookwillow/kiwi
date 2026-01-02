@@ -4,6 +4,7 @@ This file contains the IModule-compatible wrapper that loads agent
 configurations and instantiates agent handlers from `src.agents.registry`.
 """
 import yaml
+import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -52,6 +53,12 @@ class AgentsModule(IModule):
             self._agents = config.get('agents', [])
             print(f"✅ Agents模块初始化: 加载了 {len(self._agents)} 个Agent")
 
+            # Get API key from environment
+            import os
+            api_key = os.getenv('DASHSCOPE_API_KEY')
+            if not api_key:
+                print("⚠️  未设置DASHSCOPE_API_KEY环境变量，智能工具调用功能将不可用")
+
             for agent in self._agents:
                 status = "✓" if agent.get('enabled', True) else "✗"
                 print(f"   {status} {agent['name']}: {agent['description']}")
@@ -59,7 +66,8 @@ class AgentsModule(IModule):
                     handler = create_agent(
                         name=agent.get('name'),
                         description=agent.get('description', ''),
-                        capabilities=agent.get('capabilities', [])
+                        capabilities=agent.get('capabilities', []),
+                        api_key=api_key
                     )
                     self._agent_handlers[handler.name] = handler
 
