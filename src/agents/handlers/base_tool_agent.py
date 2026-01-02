@@ -88,20 +88,32 @@ class BaseToolAgent:
         3. 执行工具
         4. 生成回复
         """
+        import time
+        start_time = time.time()
+        print(f"🔍 [BaseToolAgent] {self.name}.handle() 开始: query='{query}', time={start_time}")
+        
         # 使用asyncio.run来运行异步逻辑
         try:
-            return asyncio.run(self._async_handle(query, context))
+            result = asyncio.run(self._async_handle(query, context))
+            end_time = time.time()
+            print(f"🔍 [BaseToolAgent] {self.name}.handle() 完成: time={end_time}, 耗时={(end_time-start_time)*1000:.0f}ms")
+            return result
         except RuntimeError as e:
             # 如果已经在事件循环中，使用当前循环
             if "cannot be called from a running event loop" in str(e):
                 loop = asyncio.get_event_loop()
-                return loop.run_until_complete(self._async_handle(query, context))
+                result = loop.run_until_complete(self._async_handle(query, context))
+                end_time = time.time()
+                print(f"🔍 [BaseToolAgent] {self.name}.handle() 完成(使用已有loop): time={end_time}, 耗时={(end_time-start_time)*1000:.0f}ms")
+                return result
             raise
     
     async def _async_handle(self, query: str, context: AgentContext = None) -> AgentResponse:
         """
         处理用户查询的异步实现
         """
+        print(f"🔍 [BaseToolAgent] {self.name}._async_handle() 开始")
+        
         if not self.client:
             return AgentResponse(
                 agent=self.name,

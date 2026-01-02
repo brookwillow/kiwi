@@ -60,3 +60,12 @@ agents:
       - "发送消息"
       - "读取消息"
       - "勿扰模式"
+  
+  - name: "planner_agent"
+    description: "任务规划协调Agent，负责处理复杂的跨域任务"
+    enabled: true
+    capabilities:
+      - "任务分解"
+      - "多Agent协调"
+      - "执行计划管理"
+      - "跨域任务处理"

@@ -70,6 +70,21 @@ class AgentsModule(IModule):
                         api_key=api_key
                     )
                     self._agent_handlers[handler.name] = handler
+            
+            # 为planner_agent设置可用的agents信息
+            planner = self._agent_handlers.get('planner_agent')
+            if planner:
+                agents_info = {}
+                for agent_name, handler in self._agent_handlers.items():
+                    if agent_name != 'planner_agent':
+                        agent_config = self.get_agent_by_name(agent_name)
+                        if agent_config:
+                            agents_info[agent_name] = {
+                                'description': agent_config.get('description', ''),
+                                'capabilities': agent_config.get('capabilities', [])
+                            }
+                planner.set_available_agents(agents_info)
+                print(f"✅ PlannerAgent已配置，可协调{len(agents_info)}个agents")
 
             return True
 
@@ -197,8 +212,23 @@ class AgentsModule(IModule):
         handler = self._agent_handlers.get(agent_name)
         if not handler:
             message = f"Agent {agent_name} 未启用或不存在，已忽略请求。"
-            return AgentResponse(agent=agent_name, success=False, message=message, data={})
-        return handler.handle(query=query, context=self.get_agent_context(query=query, agent_name=agent_name))
+            return AgentResponse(agent=agent_name, success=False, query=query, message=message, data={})
+        
+        # 获取agent context
+        agent_context = self.get_agent_context(query=query, agent_name=agent_name)
+        
+        # 为planner_agent传递agent_manager引用（通过扩展context）
+        if agent_name == "planner_agent":
+            # 将AgentContext转换为dict并添加agent_manager
+            context_dict = {
+                "short_term_memories": agent_context.short_term_memories,
+                "long_term_memory": agent_context.long_term_memory,
+                "system_states": agent_context.system_states,
+                "agent_manager": self
+            }
+            return handler.handle(query=query, context=context_dict)
+        
+        return handler.handle(query=query, context=agent_context)
 
     def get_statistics(self) -> Dict[str, Any]:
         enabled_count = sum(1 for a in self._agents if a.get('enabled', True))

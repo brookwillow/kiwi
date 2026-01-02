@@ -915,6 +915,7 @@ class KiwiVoiceAssistantGUI(QWidget):
             'weather_agent': '#e0f2f1',  # 浅青
             'chat_agent': '#fce4ec',  # 浅粉
             'phone_agent': '#e8f5e9',  # 浅绿
+            'planner_agent': '#fff9c4',  # 浅黄
         }
         bg_color = agent_colors.get(agent, '#e3f2fd')
         self.selected_agent_label.setStyleSheet(f"""
