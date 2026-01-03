@@ -103,6 +103,11 @@ class TTSModuleAdapter(IModule):
     
     def _handle_speak_request(self, event: Event):
         """处理TTS播报请求"""
+        # 检查是否处于评估模式
+        if hasattr(self._controller, 'evaluation_mode') and self._controller.evaluation_mode:
+            print(f"🔇 [TTS] 评估模式 - 跳过播报")
+            return
+        
         text = event.data.get('text', '')
         if not text:
             return

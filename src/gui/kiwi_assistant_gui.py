@@ -354,6 +354,24 @@ class KiwiVoiceAssistantGUI(QWidget):
         self.view_memory_btn.clicked.connect(self.show_memory_dialog)
         layout.addWidget(self.view_memory_btn)
         
+        # 性能评估按钮 🆕
+        self.evaluation_btn = QPushButton("性能评估")
+        self.evaluation_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #00BCD4;
+                color: white;
+                font-size: 12px;
+                font-weight: bold;
+                padding: 8px 16px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #0097A7;
+            }
+        """)
+        self.evaluation_btn.clicked.connect(self.show_evaluation_window)
+        layout.addWidget(self.evaluation_btn)
+        
         # 启动/停止按钮
         self.start_btn = QPushButton("▶️ 启动系统")
         self.start_btn.setStyleSheet("""
@@ -1257,6 +1275,17 @@ class KiwiVoiceAssistantGUI(QWidget):
         # 创建并显示对话框
         dialog = MemoryManagementDialog(self.controller, self)
         dialog.exec_()
+    
+    def show_evaluation_window(self):
+        """显示性能评估窗口"""
+        if not self.controller:
+            QMessageBox.warning(self, "警告", "系统控制器未初始化")
+            return
+        
+        # 创建并显示评估窗口
+        from src.gui.evaluation_window import EvaluationWindow
+        self.evaluation_window = EvaluationWindow(self.controller)
+        self.evaluation_window.show()
     
     def closeEvent(self, event):
         """窗口关闭事件"""

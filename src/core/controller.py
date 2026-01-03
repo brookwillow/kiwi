@@ -65,6 +65,9 @@ class SystemController:
             'start_time': 0
         }
         
+        # 评估模式标志（用于禁用TTS等功能）
+        self.evaluation_mode = False
+        
         if self.debug:
             print("🚀 SystemController 初始化完成")
     
