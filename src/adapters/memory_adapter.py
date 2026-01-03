@@ -97,13 +97,12 @@ class MemoryModuleAdapter(IMemoryModule):
           
 
     def get_short_term_memories(self, limit: int = 5) -> list:
-        """获取最近的短期记忆条目（返回原始格式）"""
+        """获取最近的短期记忆条目（按时间顺序）"""
         return self._memory_manager.get_short_term_memories(max_count=limit)
     
-    def get_related_short_term_memory(self, query: str, limit: int = 5) -> list:
-        """获取与查询相关的短期记忆条目"""
-        # TODO: 实现基于查询的相关性过滤
-        return self._memory_manager.get_short_term_memories(max_count=limit)
+    def get_related_short_term_memory(self, query: str, limit: int = 2) -> list:
+        """获取与查询相关的短期记忆条目（基于向量相似度）"""
+        return self._memory_manager.get_related_short_memories(query=query, max_count=limit)
     
     def get_related_long_term_memory(self, query: str = "") -> LongTermMemory:
         """获取相关的长期记忆（返回原始dict）"""

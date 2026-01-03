@@ -31,8 +31,8 @@ class ChatAgent:
 
         # 之前三轮对话内容
         last_three_conversations = ""
-        if context and context.short_term_memories:
-            for memory in context.short_term_memories[-3:]:
+        if context and context.recent_memories:
+            for memory in context.recent_memories[-3:]:
                 last_three_conversations += "[query]" + memory.query + "[response]" + memory.response + "\n"
 
         # last_conversation = "[query]"+ context.short_term_memories[0].query + "[response]" + context.short_term_memories[0].response if context and context.short_term_memories else ""
@@ -42,8 +42,10 @@ class ChatAgent:
             "1. 不要超过100个字"\
             "2. 禁止展示思考过程" \
             "3. 如果根据query无法回答，可参考之前的对话内容" \
-            "之前的对话内容："\
-            f"{last_three_conversations}"
+            "之前三轮的对话内容："\
+            f"{last_three_conversations}"\
+            "之前相关的对话内容："\
+            f"{context.related_memories}"\
         )
         messages = [
             {"role": "system", "content": system_prompt},

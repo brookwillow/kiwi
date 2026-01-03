@@ -1,0 +1,20 @@
+{
+  "summary": "用户让系统拨打母亲电话并导航至奥北公园南门，途中通知父亲，并播放周杰伦爵士风格音乐，开启空调和座椅加热。",
+  "profile": {
+    "father_phone": "13455799858",
+    "mother_phone": "87654321"
+  },
+  "preferences": {
+    "music": [
+      "jazz",
+      "周杰伦"
+    ],
+    "travel": [
+      "公园"
+    ]
+  },
+  "metadata": {
+    "last_update": 1767431663.766884,
+    "update_count": 2
+  }
+}

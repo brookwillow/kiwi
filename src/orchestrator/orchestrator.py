@@ -127,18 +127,23 @@ class Orchestrator:
     
     def _get_short_term_memories(self, query: str, max_count: int = 5):
         """
-        从memory模块获取短期记忆
+        从 memory模块获取短期记忆（优先使用语义检索）
         
         Args:
-            query: 查询内容
+            query: 查询内容（用于语义相似度检索）
             max_count: 最大返回数量
             
         Returns:
             短期记忆列表
         """
         memory_module = self.controller.get_module('memory')
-        if memory_module and hasattr(memory_module, 'get_short_term_memories'):
-            return memory_module.get_short_term_memories(max_count)
+        if memory_module:
+            # 优先尝试语义检索
+            if hasattr(memory_module, 'get_related_memories'):
+                return memory_module.get_related_memories(query, max_count)
+            # 降级为时间顺序检索
+            elif hasattr(memory_module, 'get_short_term_memories'):
+                return memory_module.get_short_term_memories(max_count)
         return []
     
     def _get_long_term_memory(self):

@@ -88,32 +88,20 @@ class BaseToolAgent:
         3. 执行工具
         4. 生成回复
         """
-        import time
-        start_time = time.time()
-        print(f"🔍 [BaseToolAgent] {self.name}.handle() 开始: query='{query}', time={start_time}")
-        
         # 使用asyncio.run来运行异步逻辑
         try:
-            result = asyncio.run(self._async_handle(query, context))
-            end_time = time.time()
-            print(f"🔍 [BaseToolAgent] {self.name}.handle() 完成: time={end_time}, 耗时={(end_time-start_time)*1000:.0f}ms")
-            return result
+            return asyncio.run(self._async_handle(query, context))
         except RuntimeError as e:
             # 如果已经在事件循环中，使用当前循环
             if "cannot be called from a running event loop" in str(e):
                 loop = asyncio.get_event_loop()
-                result = loop.run_until_complete(self._async_handle(query, context))
-                end_time = time.time()
-                print(f"🔍 [BaseToolAgent] {self.name}.handle() 完成(使用已有loop): time={end_time}, 耗时={(end_time-start_time)*1000:.0f}ms")
-                return result
+                return loop.run_until_complete(self._async_handle(query, context))
             raise
     
     async def _async_handle(self, query: str, context: AgentContext = None) -> AgentResponse:
         """
         处理用户查询的异步实现
         """
-        print(f"🔍 [BaseToolAgent] {self.name}._async_handle() 开始")
-        
         if not self.client:
             return AgentResponse(
                 agent=self.name,
@@ -316,4 +304,11 @@ class BaseToolAgent:
 3. 如果工具执行结果与用户期望有关联，请明确指出
 
 对话记忆：
-{recent_conversations}"""
+{recent_conversations}
+
+用户的画像：
+{context.long_term_memory.user_profile if context.long_term_memory else "无"}
+
+用户的习惯和偏好：
+{context.long_term_memory.preferences if context.long_term_memory else "无"}
+"""

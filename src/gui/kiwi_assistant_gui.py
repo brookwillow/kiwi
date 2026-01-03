@@ -5,6 +5,7 @@ Kiwi 语音助手 - 新架构GUI主程序
 """
 import sys
 import json
+import time
 import numpy as np
 from collections import deque
 from typing import Optional
@@ -13,7 +14,7 @@ from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, 
     QHBoxLayout, QPushButton, QLabel, QComboBox, QTextEdit,
     QGroupBox, QCheckBox, QLineEdit, QDialog, QTableWidget, QTableWidgetItem,
-    QHeaderView
+    QHeaderView, QTabWidget, QMessageBox
 )
 from PyQt5.QtCore import QTimer, Qt, QPropertyAnimation, QEasingCurve, pyqtProperty
 from PyQt5.QtGui import QFont, QColor
@@ -334,6 +335,24 @@ class KiwiVoiceAssistantGUI(QWidget):
         """)
         self.view_state_btn.clicked.connect(self.show_state_dialog)
         layout.addWidget(self.view_state_btn)
+        
+        # 记忆管理按钮
+        self.view_memory_btn = QPushButton("记忆管理")
+        self.view_memory_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #FF5722;
+                color: white;
+                font-size: 12px;
+                font-weight: bold;
+                padding: 8px 16px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #E64A19;
+            }
+        """)
+        self.view_memory_btn.clicked.connect(self.show_memory_dialog)
+        layout.addWidget(self.view_memory_btn)
         
         # 启动/停止按钮
         self.start_btn = QPushButton("▶️ 启动系统")
@@ -743,6 +762,7 @@ class KiwiVoiceAssistantGUI(QWidget):
         self.gui_adapter.connect_audio_frame_handler(self.on_audio_frame)
         self.gui_adapter.connect_orchestrator_decision_handler(self.on_orchestrator_decision)
         self.gui_adapter.connect_agent_response_handler(self._on_agent_response)
+        self.gui_adapter.connect_memory_recall_handler(self.on_memory_recall)
     
     def update_status_display(self, status: str, icon: str, text: str, color_start: str, color_end: str, border_color: str):
         """
@@ -960,6 +980,70 @@ class KiwiVoiceAssistantGUI(QWidget):
         
         print(f"🤖 Orchestrator决策: {agent} (置信度: {confidence:.2f})")
     
+    def on_memory_recall(self, data: dict):
+        """记忆召回事件处理 - 显示Agent召回的记忆"""
+        try:
+            import time as time_module
+            
+            agent_name = data.get('agent_name', '')
+            recent_memories = data.get('recent_memories', [])
+            related_memories = data.get('related_memories', [])
+            long_term_memory = data.get('long_term_memory', {})
+            
+            # 更新短期记忆显示（合并最近和相关记忆）
+            memory_text = f"🧠 Agent: {agent_name} 的记忆召回\n"
+            memory_text += "=" * 50 + "\n\n"
+            
+            if recent_memories:
+                memory_text += f"📝 最近记忆 ({len(recent_memories)} 条):\n"
+                for i, mem in enumerate(recent_memories, 1):
+                    timestamp_str = time_module.strftime('%H:%M:%S', time_module.localtime(mem['timestamp']))
+                    memory_text += f"{i}. [{timestamp_str}] {mem['query'][:50]}...\n"
+                    memory_text += f"   回复: {mem['response'][:50]}...\n\n"
+            
+            if related_memories:
+                memory_text += f"🔍 相关记忆 ({len(related_memories)} 条):\n"
+                for i, mem in enumerate(related_memories, 1):
+                    timestamp_str = time_module.strftime('%H:%M:%S', time_module.localtime(mem['timestamp']))
+                    memory_text += f"{i}. [{timestamp_str}] {mem['query'][:50]}...\n"
+                    memory_text += f"   回复: {mem['response'][:50]}...\n\n"
+            
+            if not recent_memories and not related_memories:
+                memory_text += "暂无短期记忆\n"
+            
+            self.query_history_text.setPlainText(memory_text)
+            
+            # 更新长期记忆显示
+            ltm_text = ""
+            if long_term_memory.get('summary'):
+                ltm_text += f"📝 摘要:\n{long_term_memory['summary']}\n\n"
+            
+            if long_term_memory.get('profile'):
+                ltm_text += "👤 用户画像:\n"
+                for key, value in long_term_memory['profile'].items():
+                    if value:
+                        ltm_text += f"  • {key}: {value}\n"
+                ltm_text += "\n"
+            
+            if long_term_memory.get('preferences'):
+                ltm_text += "❤️ 用户偏好:\n"
+                for key, value in long_term_memory['preferences'].items():
+                    if value:
+                        if isinstance(value, list):
+                            ltm_text += f"  • {key}: {', '.join(str(v) for v in value)}\n"
+                        else:
+                            ltm_text += f"  • {key}: {value}\n"
+            
+            if ltm_text:
+                self.long_term_memory_text.setPlainText(ltm_text)
+            
+            print(f"✅ GUI: 已更新Agent记忆召回显示 (最近:{len(recent_memories)} 相关:{len(related_memories)})")
+            
+        except Exception as e:
+            print(f"⚠️ 更新记忆召回显示失败: {e}")
+            import traceback
+            traceback.print_exc()
+    
     
     def _on_agent_response(self, response_data: dict):
         """处理Agent响应结果"""
@@ -1150,6 +1234,15 @@ class KiwiVoiceAssistantGUI(QWidget):
         dialog = SystemStateDialog(self.controller, self)
         dialog.exec_()
     
+    def show_memory_dialog(self):
+        """显示记忆管理对话框"""
+        if not self.controller:
+            return
+        
+        # 创建并显示对话框
+        dialog = MemoryManagementDialog(self.controller, self)
+        dialog.exec_()
+    
     def closeEvent(self, event):
         """窗口关闭事件"""
         if self.is_running:
@@ -1310,6 +1403,463 @@ class SystemStateDialog(QDialog):
             print(f"❌ 加载状态失败: {e}")
             import traceback
             traceback.print_exc()
+
+
+class MemoryManagementDialog(QDialog):
+    """记忆管理对话框"""
+    
+    def __init__(self, controller: SystemController, parent=None):
+        super().__init__(parent)
+        self.controller = controller
+        self.setWindowTitle("🧠 记忆管理")
+        self.setMinimumSize(1000, 700)
+        self.init_ui()
+        self.load_memories()
+        
+        # 自动刷新定时器
+        self.refresh_timer = QTimer()
+        self.refresh_timer.timeout.connect(self.load_memories)
+        self.refresh_timer.start(2000)  # 每2秒刷新
+    
+    def init_ui(self):
+        """初始化UI"""
+        layout = QVBoxLayout()
+        
+        # 标题
+        title = QLabel("🧠 记忆管理中心")
+        title.setFont(QFont("Arial", 16, QFont.Bold))
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+        
+        # 创建TabWidget
+        tab_widget = QTabWidget()
+        tab_widget.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid #cccccc;
+                background: white;
+            }
+            QTabBar::tab {
+                background: #e0e0e0;
+                padding: 10px 20px;
+                margin-right: 2px;
+                border-top-left-radius: 5px;
+                border-top-right-radius: 5px;
+            }
+            QTabBar::tab:selected {
+                background: #2196F3;
+                color: white;
+            }
+        """)
+        
+        # 短期记忆Tab
+        short_term_tab = self.create_short_term_tab()
+        tab_widget.addTab(short_term_tab, "📝 短期记忆")
+        
+        # 长期记忆Tab
+        long_term_tab = self.create_long_term_tab()
+        tab_widget.addTab(long_term_tab, "💾 长期记忆")
+        
+        layout.addWidget(tab_widget)
+        
+        # 统计信息
+        self.stats_label = QLabel()
+        self.stats_label.setFont(QFont("Arial", 10))
+        self.stats_label.setStyleSheet("padding: 5px; background-color: #f0f0f0; border-radius: 3px;")
+        layout.addWidget(self.stats_label)
+        
+        # 按钮区域
+        button_layout = QHBoxLayout()
+        
+        refresh_btn = QPushButton("🔄 刷新")
+        refresh_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                font-size: 12px;
+                padding: 8px 16px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+        """)
+        refresh_btn.clicked.connect(self.load_memories)
+        button_layout.addWidget(refresh_btn)
+        
+        clear_short_btn = QPushButton("🗑️ 清空短期记忆")
+        clear_short_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #FF9800;
+                color: white;
+                font-size: 12px;
+                padding: 8px 16px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #F57C00;
+            }
+        """)
+        clear_short_btn.clicked.connect(self.clear_short_term_memories)
+        button_layout.addWidget(clear_short_btn)
+        
+        clear_all_btn = QPushButton("⚠️ 清空所有记忆")
+        clear_all_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f44336;
+                color: white;
+                font-size: 12px;
+                padding: 8px 16px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #d32f2f;
+            }
+        """)
+        clear_all_btn.clicked.connect(self.clear_all_memories)
+        button_layout.addWidget(clear_all_btn)
+        
+        button_layout.addStretch()
+        
+        close_btn = QPushButton("关闭")
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #757575;
+                color: white;
+                font-size: 12px;
+                padding: 8px 16px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #616161;
+            }
+        """)
+        close_btn.clicked.connect(self.close)
+        button_layout.addWidget(close_btn)
+        
+        layout.addLayout(button_layout)
+        
+        self.setLayout(layout)
+    
+    def create_short_term_tab(self):
+        """创建短期记忆Tab"""
+        widget = QWidget()
+        layout = QVBoxLayout()
+        
+        # 短期记忆表格
+        self.short_memory_table = QTableWidget()
+        self.short_memory_table.setColumnCount(5)
+        self.short_memory_table.setHorizontalHeaderLabels(["时间", "查询", "响应", "Agent", "操作"])
+        
+        # 设置列宽
+        header = self.short_memory_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        
+        self.short_memory_table.setStyleSheet("""
+            QTableWidget {
+                background-color: #ffffff;
+                gridline-color: #e0e0e0;
+                font-size: 11px;
+            }
+            QHeaderView::section {
+                background-color: #2196F3;
+                color: white;
+                padding: 8px;
+                font-weight: bold;
+                border: none;
+            }
+        """)
+        
+        layout.addWidget(self.short_memory_table)
+        widget.setLayout(layout)
+        return widget
+    
+    def create_long_term_tab(self):
+        """创建长期记忆Tab"""
+        widget = QWidget()
+        layout = QVBoxLayout()
+        
+        # 长期记忆显示区域
+        self.long_memory_text = QTextEdit()
+        self.long_memory_text.setReadOnly(True)
+        self.long_memory_text.setStyleSheet("""
+            QTextEdit {
+                background-color: #ffffff;
+                font-family: 'Courier New', monospace;
+                font-size: 12px;
+                padding: 10px;
+                border: 1px solid #e0e0e0;
+                border-radius: 5px;
+            }
+        """)
+        layout.addWidget(self.long_memory_text)
+        
+        widget.setLayout(layout)
+        return widget
+    
+    def load_memories(self):
+        """加载所有记忆"""
+        try:
+            memory_adapter = self.controller.get_module('memory')
+            if not memory_adapter:
+                return
+            
+            # 从向量数据库加载短期记忆
+            short_memories_data = []
+            if memory_adapter._memory_manager.short_term_collection:
+                try:
+                    # 获取所有短期记忆
+                    results = memory_adapter._memory_manager.short_term_collection.get()
+                    
+                    if results and results['metadatas']:
+                        # 按时间戳排序（最新的在前）
+                        memories_with_timestamp = []
+                        for metadata in results['metadatas']:
+                            memories_with_timestamp.append({
+                                'query': metadata.get('query', ''),
+                                'response': metadata.get('response', ''),
+                                'timestamp': metadata.get('timestamp', 0),
+                                'agent': metadata.get('agent', ''),
+                                'success': metadata.get('success', True)
+                            })
+                        
+                        # 按时间戳降序排序（最新的在前）
+                        short_memories_data = sorted(memories_with_timestamp, 
+                                                    key=lambda x: x['timestamp'], 
+                                                    reverse=True)
+                except Exception as e:
+                    print(f"⚠️ 从向量数据库加载短期记忆失败: {e}")
+            
+            # 填充短期记忆表格
+            self.short_memory_table.setRowCount(len(short_memories_data))
+            
+            for row, memory in enumerate(short_memories_data):
+                # 时间
+                time_str = time.strftime('%H:%M:%S', time.localtime(memory['timestamp']))
+                time_item = QTableWidgetItem(time_str)
+                self.short_memory_table.setItem(row, 0, time_item)
+                
+                # 查询
+                query_item = QTableWidgetItem(memory['query'][:100])
+                self.short_memory_table.setItem(row, 1, query_item)
+                
+                # 响应
+                response_item = QTableWidgetItem(memory['response'][:100])
+                self.short_memory_table.setItem(row, 2, response_item)
+                
+                # Agent
+                agent_item = QTableWidgetItem(memory['agent'])
+                self.short_memory_table.setItem(row, 3, agent_item)
+                
+                # 删除按钮
+                delete_btn = QPushButton("🗑️")
+                delete_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #f44336;
+                        color: white;
+                        border-radius: 3px;
+                        padding: 2px 8px;
+                    }
+                    QPushButton:hover {
+                        background-color: #d32f2f;
+                    }
+                """)
+                # 存储timestamp用于删除
+                timestamp = memory['timestamp']
+                delete_btn.clicked.connect(lambda checked, ts=timestamp: self.delete_short_memory_by_timestamp(ts))
+                self.short_memory_table.setCellWidget(row, 4, delete_btn)
+            
+            # 加载长期记忆
+            long_term = memory_adapter._memory_manager.long_term_memory_data
+            display_text = "📋 长期记忆摘要\n"
+            display_text += "=" * 60 + "\n\n"
+            
+            if long_term.get('summary'):
+                display_text += f"📝 摘要:\n{long_term['summary']}\n\n"
+            
+            if long_term.get('profile'):
+                display_text += "👤 用户画像:\n"
+                for key, value in long_term['profile'].items():
+                    if value:
+                        display_text += f"  • {key}: {value}\n"
+                display_text += "\n"
+            
+            if long_term.get('preferences'):
+                display_text += "❤️ 用户偏好:\n"
+                for key, value in long_term['preferences'].items():
+                    if value:
+                        if isinstance(value, list):
+                            display_text += f"  • {key}: {', '.join(str(v) for v in value)}\n"
+                        else:
+                            display_text += f"  • {key}: {value}\n"
+            
+            if long_term.get('metadata'):
+                display_text += "\n📊 元数据:\n"
+                for key, value in long_term['metadata'].items():
+                    if key == 'last_update':
+                        value_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(value))
+                        display_text += f"  • {key}: {value_str}\n"
+                    else:
+                        display_text += f"  • {key}: {value}\n"
+            
+            self.long_memory_text.setPlainText(display_text)
+            
+            # 更新统计信息
+            vector_db_short = 0
+            vector_db_long = 0
+            if memory_adapter._memory_manager.short_term_collection:
+                vector_db_short = memory_adapter._memory_manager.short_term_collection.count()
+            if memory_adapter._memory_manager.long_term_collection:
+                vector_db_long = memory_adapter._memory_manager.long_term_collection.count()
+            
+            # 同时显示内存中的记忆数量
+            memory_count = len(memory_adapter._memory_manager.memories)
+            stats_text = f"📊 统计: 内存记忆 {memory_count} 条 | 向量库短期 {vector_db_short} 条 | 向量库长期 {vector_db_long} 条"
+            self.stats_label.setText(stats_text)
+            
+        except Exception as e:
+            print(f"❌ 加载记忆失败: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def delete_short_memory_by_timestamp(self, timestamp: float):
+        """根据时间戳删除短期记忆"""
+        try:
+            reply = QMessageBox.question(
+                self, '确认删除',
+                '确定要删除这条记忆吗？',
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            
+            if reply == QMessageBox.Yes:
+                memory_adapter = self.controller.get_module('memory')
+                if memory_adapter:
+                    # 从向量数据库删除
+                    if memory_adapter._memory_manager.short_term_collection:
+                        memory_id = f"stm_{int(timestamp * 1000)}"
+                        try:
+                            memory_adapter._memory_manager.short_term_collection.delete(ids=[memory_id])
+                        except Exception as e:
+                            print(f"⚠️ 从向量库删除失败: {e}")
+                    
+                    # 从内存列表中删除（如果存在）
+                    memory_adapter._memory_manager.memories = [
+                        m for m in memory_adapter._memory_manager.memories 
+                        if m.timestamp != timestamp
+                    ]
+                    
+                    self.load_memories()
+                    QMessageBox.information(self, "成功", "记忆已删除")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"删除失败: {e}")
+    
+    def delete_short_memory(self, index: int):
+        """删除指定的短期记忆"""
+        try:
+            reply = QMessageBox.question(
+                self, '确认删除',
+                '确定要删除这条记忆吗？',
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            
+            if reply == QMessageBox.Yes:
+                memory_adapter = self.controller.get_module('memory')
+                if memory_adapter and 0 <= index < len(memory_adapter._memory_manager.memories):
+                    memory = memory_adapter._memory_manager.memories[index]
+                    # 从内存删除
+                    del memory_adapter._memory_manager.memories[index]
+                    # 从向量数据库删除
+                    if memory_adapter._memory_manager.short_term_collection:
+                        memory_id = f"stm_{int(memory.timestamp * 1000)}"
+                        try:
+                            memory_adapter._memory_manager.short_term_collection.delete(ids=[memory_id])
+                        except:
+                            pass
+                    self.load_memories()
+                    QMessageBox.information(self, "成功", "记忆已删除")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"删除失败: {e}")
+    
+    def clear_short_term_memories(self):
+        """清空所有短期记忆"""
+        try:
+            reply = QMessageBox.question(
+                self, '确认清空',
+                '确定要清空所有短期记忆吗？此操作不可恢复！',
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            
+            if reply == QMessageBox.Yes:
+                memory_adapter = self.controller.get_module('memory')
+                if memory_adapter:
+                    # 清空内存
+                    memory_adapter._memory_manager.memories.clear()
+                    # 清空向量数据库
+                    if memory_adapter._memory_manager.short_term_collection:
+                        try:
+                            existing = memory_adapter._memory_manager.short_term_collection.get()
+                            if existing['ids']:
+                                memory_adapter._memory_manager.short_term_collection.delete(ids=existing['ids'])
+                        except:
+                            pass
+                    self.load_memories()
+                    QMessageBox.information(self, "成功", "短期记忆已清空")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"清空失败: {e}")
+    
+    def clear_all_memories(self):
+        """清空所有记忆（包括长期记忆）"""
+        try:
+            reply = QMessageBox.question(
+                self, '⚠️ 危险操作',
+                '确定要清空所有记忆（包括长期记忆）吗？\n此操作不可恢复！',
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            
+            if reply == QMessageBox.Yes:
+                memory_adapter = self.controller.get_module('memory')
+                if memory_adapter:
+                    # 清空短期记忆
+                    memory_adapter._memory_manager.memories.clear()
+                    if memory_adapter._memory_manager.short_term_collection:
+                        try:
+                            existing = memory_adapter._memory_manager.short_term_collection.get()
+                            if existing['ids']:
+                                memory_adapter._memory_manager.short_term_collection.delete(ids=existing['ids'])
+                        except:
+                            pass
+                    
+                    # 清空长期记忆
+                    memory_adapter._memory_manager.long_term_memory_data = {
+                        "summary": "",
+                        "profile": {},
+                        "preferences": {},
+                        "metadata": {}
+                    }
+                    if memory_adapter._memory_manager.long_term_collection:
+                        try:
+                            existing = memory_adapter._memory_manager.long_term_collection.get()
+                            if existing['ids']:
+                                memory_adapter._memory_manager.long_term_collection.delete(ids=existing['ids'])
+                        except:
+                            pass
+                    
+                    # 删除持久化文件
+                    import os
+                    if os.path.exists(memory_adapter._memory_manager.long_term_memory_file):
+                        os.remove(memory_adapter._memory_manager.long_term_memory_file)
+                    
+                    self.load_memories()
+                    QMessageBox.information(self, "成功", "所有记忆已清空")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"清空失败: {e}")
 
 
 def main():

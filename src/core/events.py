@@ -226,6 +226,22 @@ class OrchestratorDecision:
 @dataclass
 class AgentContext:
     """Agent上下文"""
-    short_term_memories: List[ShortTermMemory]  # 短期记忆
+    recent_memories: List[ShortTermMemory]  # 最近的短期记忆（按时间顺序）
+    related_memories: List[ShortTermMemory]  # 相关的短期记忆（按语义相似度）
     long_term_memory: Optional[LongTermMemory]  # 长期记忆
     system_states: List[SystemState]   # 系统状态
+    
+    @property
+    def short_term_memories(self) -> List[ShortTermMemory]:
+        """向后兼容：返回所有短期记忆（最近+相关，去重）"""
+        seen = set()
+        merged = []
+        for mem in self.recent_memories:
+            if mem.timestamp not in seen:
+                merged.append(mem)
+                seen.add(mem.timestamp)
+        for mem in self.related_memories:
+            if mem.timestamp not in seen:
+                merged.append(mem)
+                seen.add(mem.timestamp)
+        return merged

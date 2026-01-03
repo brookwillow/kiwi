@@ -82,9 +82,6 @@ class LLMDecisionMaker:
 ** 用户画像和偏好：**
 {long_term_info}
 
-**当前系统状态：**
-{json.dumps(system_states_info, ensure_ascii=False, indent=2)}
-
 **可用的Agents：**
 {json.dumps(agents_info, ensure_ascii=False, indent=2)}
 

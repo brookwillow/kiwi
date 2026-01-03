@@ -128,12 +128,11 @@ class AgentsModule(IModule):
                 return agent.copy()
         return None
     
-    def _get_short_term_memories(self, query: str, max_count: int = 5):
+    def _get_recent_memories(self, max_count: int = 5):
         """
-        从memory模块获取短期记忆
+        从 memory模块获取最近的短期记忆（按时间顺序）
         
         Args:
-            query: 查询内容
             max_count: 最大返回数量
             
         Returns:
@@ -144,7 +143,23 @@ class AgentsModule(IModule):
             return memory_module.get_short_term_memories(max_count)
         return []
     
-    def _get_long_term_memory(self):
+    def _get_related_memories(self, query: str, max_count: int = 3):
+        """
+        从 memory模块基于语义相似度获取相关记忆
+        
+        Args:
+            query: 查询内容（用于语义相似度检索）
+            max_count: 最大返回数量
+            
+        Returns:
+            短期记忆列表
+        """
+        memory_module = self.controller.get_module('memory')
+        if memory_module and hasattr(memory_module, 'get_related_short_term_memory'):
+            return memory_module.get_related_short_term_memory(query, max_count)
+        return []
+    
+    def _get_long_term_memory(self,query: str = ""):
         """
         从memory模块获取长期记忆
         
@@ -153,7 +168,7 @@ class AgentsModule(IModule):
         """
         memory_module = self.controller.get_module('memory')
         if memory_module and hasattr(memory_module, 'get_related_long_term_memory'):
-            return memory_module.get_related_long_term_memory()
+            return memory_module.get_related_long_term_memory(query)
         return None
     
     def _get_system_states(self, query: str):
@@ -181,9 +196,24 @@ class AgentsModule(IModule):
         return []
     
     def get_agent_context(self, query:str, agent_name: str) -> AgentContext:
+        """
+        为agent构建上下文，统一召回记忆
+        
+        Args:
+            query: 用户查询
+            agent_name: Agent名称
+            
+        Returns:
+            AgentContext对象，包含所有相关记忆和上下文
+        """
         agent = self.get_agent_by_name(agent_name)
         if not agent:
-            return {}
+            return AgentContext(
+                recent_memories=[],
+                related_memories=[],
+                long_term_memory=None,
+                system_states=[]
+            )
         
         agent_info = {
             'name': agent.get('name', ''),
@@ -191,22 +221,84 @@ class AgentsModule(IModule):
             'capabilities': agent.get('capabilities', []),
         }
 
-        # 1. 从memory模块召回短期记忆（对话历史）
-        short_term_memories = self._get_short_term_memories(query)
+        print(f"\n📚 [记忆召回] 为 {agent_name} 准备上下文...")
+        
+        # 1. 获取最近的短期记忆（按时间顺序）
+        recent_memories = self._get_recent_memories(max_count=5)
+        print(f"   ✅ 最近记忆: {len(recent_memories)} 条")
+        
+        # 2. 基于语义相似度获取相关短期记忆
+        related_memories = self._get_related_memories(query, max_count=3)
+        print(f"   ✅ 相关记忆: {len(related_memories)} 条")
+        
+        # 3. 从 memory模块召回长期记忆（用户画像）
+        long_term_memory = self._get_long_term_memory(query)
+        if long_term_memory:
+            print(f"   ✅ 长期记忆: 已加载")
+            if long_term_memory.user_profile:
+                print(f"      - 用户画像: {len(long_term_memory.user_profile)} 个字段")
+            if long_term_memory.preferences:
+                print(f"      - 用户偏好: {len(long_term_memory.preferences)} 个字段")
+        else:
+            print(f"   ⚠️  长期记忆: 未找到")
             
-        # 2. 从memory模块召回长期记忆（用户画像）
-        long_term_memory = self._get_long_term_memory()
-            
-        # 3. 从perception模块召回系统状态
+        # 4. 从 perception模块召回系统状态
         system_states = self._get_system_states(query)
+        print(f"   ✅ 系统状态: {len(system_states)} 条\n")
         
         context = AgentContext(
-            short_term_memories=short_term_memories,
+            recent_memories=recent_memories,
+            related_memories=related_memories,
             long_term_memory=long_term_memory,
             system_states=system_states
         )
+        
+        # 5. 发送记忆召回事件到GUI（已禁用，显示效果不好）
+        # self._send_memory_recall_event(agent_name, context)
 
         return context
+    
+    def _send_memory_recall_event(self, agent_name: str, context: AgentContext):
+        """发送记忆召回事件到GUI用于显示
+        
+        Args:
+            agent_name: Agent名称
+            context: Agent上下文
+        """
+        try:
+            from src.core.events import Event, EventType
+            event = Event.create(
+                event_type=EventType.GUI_UPDATE_TEXT,
+                source='agent_manager',
+                data={
+                    'event_type': 'memory_recall',
+                    'agent_name': agent_name,
+                    'recent_memories': [
+                        {
+                            'query': m.query,
+                            'response': m.response,
+                            'timestamp': m.timestamp,
+                            'agent': m.agent
+                        } for m in context.recent_memories
+                    ],
+                    'related_memories': [
+                        {
+                            'query': m.query,
+                            'response': m.response,
+                            'timestamp': m.timestamp,
+                            'agent': m.agent
+                        } for m in context.related_memories
+                    ],
+                    'long_term_memory': {
+                        'summary': context.long_term_memory.summary if context.long_term_memory else '',
+                        'profile': context.long_term_memory.user_profile if context.long_term_memory else {},
+                        'preferences': context.long_term_memory.preferences if context.long_term_memory else {}
+                    }
+                }
+            )
+            self.controller.publish_event(event)
+        except Exception as e:
+            print(f"⚠️ 发送记忆召回事件失败: {e}")
 
     def execute_agent(self, agent_name: str, query: str, context: Optional[Dict[str, Any]] = None) -> AgentResponse:
         handler = self._agent_handlers.get(agent_name)

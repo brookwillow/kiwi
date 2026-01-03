@@ -34,6 +34,7 @@ class GUIModuleAdapter(QObject):
     audio_frame_signal = pyqtSignal(dict)            # 音频帧（用于波形显示）
     orchestrator_decision_signal = pyqtSignal(dict)  # Orchestrator决策结果
     agent_response_signal = pyqtSignal(dict)         # Agent响应结果
+    memory_recall_signal = pyqtSignal(dict)          # 记忆召回事件
     
     _instance_counter = 0  # 类变量，用于追踪实例
     
@@ -262,6 +263,17 @@ class GUIModuleAdapter(QObject):
                 'timestamp': event.timestamp
             }
             self.agent_response_signal.emit(response_data)
+        
+        # 处理记忆召回事件
+        elif event.data.get('event_type') == 'memory_recall':
+            recall_data = {
+                'agent_name': event.data.get('agent_name', ''),
+                'recent_memories': event.data.get('recent_memories', []),
+                'related_memories': event.data.get('related_memories', []),
+                'long_term_memory': event.data.get('long_term_memory', {}),
+                'timestamp': event.timestamp
+            }
+            self.memory_recall_signal.emit(recall_data)
     
     # ==================== 统计信息 ====================
     
@@ -302,6 +314,10 @@ class GUIModuleAdapter(QObject):
         """连接状态变化处理器"""
         self.state_changed_signal.connect(handler)
     
+    
+    def connect_memory_recall_handler(self, handler: Callable):
+        """连接记忆召回处理器"""
+        self.memory_recall_signal.connect(handler)
     def connect_audio_frame_handler(self, handler: Callable):
         """连接音频帧处理器"""
         self.audio_frame_signal.connect(handler)
