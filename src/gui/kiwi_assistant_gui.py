@@ -471,10 +471,25 @@ class KiwiVoiceAssistantGUI(QWidget):
         def publish_event_async():
             print("publish_event_async ")
             try:
-                # 创建合成ASR事件
+                # 导入消息追踪器并创建新的消息ID
+                from src.core.message_tracker import get_message_tracker
+                tracker = get_message_tracker()
+                msg_id = tracker.create_message_id(session_type="text_input")
+                
+                # 记录文本输入
+                tracker.add_trace(
+                    msg_id=msg_id,
+                    module_name="gui_test",
+                    event_type="text_input",
+                    output_data={'text': text}
+                )
+                tracker.update_query(msg_id, text)
+                
+                # 创建合成ASR事件（带上msg_id）
                 event = Event.create(
                     event_type=EventType.ASR_RECOGNITION_SUCCESS,
                     source="gui_test",
+                    msg_id=msg_id,
                     data={
                         'text': text,
                         'confidence': 1.0,
@@ -484,7 +499,7 @@ class KiwiVoiceAssistantGUI(QWidget):
                 
                 # 发布事件到系统（这会触发orchestrator → agent → TTS的处理链）
                 self.controller.publish_event(event)
-                print(f"🧪 [测试] 发送查询: {text}")
+                print(f"🧪 [测试] 发送查询: {text} (消息ID: {msg_id})")
                 
             except Exception as e:
                 print(f"❌ [测试] 发送查询失败: {e}")

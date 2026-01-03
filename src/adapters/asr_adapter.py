@@ -11,6 +11,7 @@ import numpy as np
 from src.core.interfaces import IASRModule
 from src.core.events import Event, EventType, ASREvent as ASREventType
 from src.asr import create_asr_engine, ASRConfig
+from src.core.message_tracker import get_message_tracker
 
 
 class ASRModuleAdapter(IASRModule):
@@ -41,6 +42,9 @@ class ASRModuleAdapter(IASRModule):
         # 异步任务管理
         self._executor = ThreadPoolExecutor(max_workers=2)
         self._current_task = None
+        
+        # 当前处理的消息ID
+        self._current_msg_id: Optional[str] = None
         
         # 统计
         self._recognitions = 0
@@ -122,6 +126,10 @@ class ASRModuleAdapter(IASRModule):
         # 处理语音结束事件 -> 触发识别
         if event.type == EventType.VAD_SPEECH_END:
             if self._enabled:
+                # 从事件中提取 msg_id
+                if event.msg_id:
+                    self._current_msg_id = event.msg_id
+                
                 # event.data可能是字典或直接是bytes
                 if isinstance(event.data, dict):
                     audio_data = event.data.get('audio_data')
@@ -229,13 +237,26 @@ class ASRModuleAdapter(IASRModule):
         self._recognitions += 1
         print(f"\n{'='*60}")
         print(f"🎙️  ASR: 开始识别 (第 {self._recognitions} 次)...")
+        if self._current_msg_id:
+            print(f"   消息ID: {self._current_msg_id}")
         print(f"{'='*60}")
+        
+        # 记录追踪
+        if self._current_msg_id:
+            tracker = get_message_tracker()
+            tracker.add_trace(
+                msg_id=self._current_msg_id,
+                module_name=self.name,
+                event_type="recognition_start",
+                input_data={'audio_length': len(audio_data) if audio_data else 0}
+            )
         
         # 发送ASR开始识别事件
         try:
             start_event = Event.create(
                 event_type=EventType.ASR_RECOGNITION_START,
-                source=self.name
+                source=self.name,
+                msg_id=self._current_msg_id
             )
             self._controller.publish_event(start_event)
             print(f"📤 [ASR] 已发送 ASR_RECOGNITION_START 事件")
@@ -269,6 +290,23 @@ class ASRModuleAdapter(IASRModule):
                 print(f"   文本: {text}")
                 print(f"   置信度: {confidence:.2f}")
                 print(f"   耗时: {latency_ms:.0f}ms")
+                if self._current_msg_id:
+                    print(f"   消息ID: {self._current_msg_id}")
+                
+                # 记录追踪
+                if self._current_msg_id:
+                    tracker = get_message_tracker()
+                    tracker.add_trace(
+                        msg_id=self._current_msg_id,
+                        module_name=self.name,
+                        event_type="recognition_success",
+                        output_data={
+                            'text': text,
+                            'confidence': confidence,
+                            'latency_ms': latency_ms
+                        }
+                    )
+                    tracker.update_query(self._current_msg_id, text)
                 
                 # 发布识别成功事件
                 event = ASREventType(
@@ -276,7 +314,8 @@ class ASRModuleAdapter(IASRModule):
                     source=self.name,
                     text=text,
                     confidence=confidence,
-                    latency_ms=latency_ms
+                    latency_ms=latency_ms,
+                    msg_id=self._current_msg_id
                 )
                 self._controller.publish_event(event)
                 

@@ -249,12 +249,14 @@ kiwi/
 │   ├── core/                   # 核心框架
 │   │   ├── controller.py       # 系统控制器
 │   │   ├── events.py           # 事件定义
-│   │   └── interfaces.py       # 模块接口
+│   │   ├── interfaces.py       # 模块接口
+│   │   └── message_tracker.py  # 消息追踪系统 🆕
 │   ├── adapters/               # 模块适配器
 │   │   ├── audio_adapter.py
 │   │   ├── wakeword_adapter.py
 │   │   ├── vad_adapter.py
 │   │   ├── asr_adapter.py
+│   │   ├── orchestrator_adapter.py
 │   │   └── gui_adapter.py
 │   ├── state_machine/          # 状态机
 │   │   ├── manager.py
@@ -263,11 +265,62 @@ kiwi/
 │   ├── wakeword/               # 唤醒词引擎
 │   ├── vad/                    # VAD 引擎
 │   ├── asr/                    # ASR 引擎
+│   ├── orchestrator/           # 编排者模块
+│   ├── agents/                 # Agent系统
 │   └── gui/                    # GUI 界面
+├── tools/                      # 工具集 🆕
+│   └── query_message_trace.py  # 消息追踪查询工具
+├── logs/                       # 日志目录 🆕
+│   └── message_traces/         # 消息追踪日志
 ├── config/                     # 配置文件
+├── docs/                       # 文档 🆕
+│   └── MESSAGE_TRACKING.md     # 消息追踪系统文档
 ├── models/                     # 模型文件
 └── main.py                     # 程序入口
 ```
+
+## 🔍 消息追踪系统 (Message Tracking) 🆕
+
+为系统的每一轮对话创建唯一的 `msgId`，并在整个流水线中追踪所有模块的输入输出。
+
+### 特性
+
+- ✅ 自动为每轮对话生成唯一ID
+- ✅ 支持语音唤醒和文本输入两种触发方式
+- ✅ 记录完整的处理链路：Wakeword → VAD → ASR → Orchestrator → Agent → TTS
+- ✅ 自动生成 JSONL 格式的追踪日志
+- ✅ 提供命令行工具查询和分析
+
+### 快速使用
+
+```bash
+# 查看最近10条消息
+python tools/query_message_trace.py --list 10
+
+# 查询特定消息的完整链路
+python tools/query_message_trace.py --msg-id msg_1735891234567_a1b2c3d4
+
+# 搜索关键词
+python tools/query_message_trace.py --search "天气"
+```
+
+### 示例输出
+
+```
+🆔 创建新消息ID: msg_1735891234567_a1b2c3d4 (类型: wakeword)
+   → [wakeword] wakeword_detected
+   → [vad] speech_start
+   → [vad] speech_end
+   → [asr] recognition_success
+   → [orchestrator] orchestrator_decision
+   → [chat_agent] agent_response
+   → [tts] tts_request
+✅ 消息追踪完成: msg_1735891234567_a1b2c3d4
+   总耗时: 2345.67ms
+   模块数: 8
+```
+
+详细文档: [docs/MESSAGE_TRACKING.md](docs/MESSAGE_TRACKING.md)
 
 ## 🎨 技术栈
 

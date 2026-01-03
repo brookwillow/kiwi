@@ -10,6 +10,7 @@ from collections import deque
 from src.core.interfaces import IVADModule
 from src.core.events import Event, EventType, VADEvent as VADEventType
 from src.vad import VADFactory, VADConfig, VADResult, VADEvent, VADState
+from src.core.message_tracker import get_message_tracker
 
 
 class VADModuleAdapter(IVADModule):
@@ -40,6 +41,9 @@ class VADModuleAdapter(IVADModule):
         # VAD帧缓冲（用于对齐帧大小）
         self._frame_buffer = []
         self._frame_size = 480  # 30ms @ 16kHz，会在初始化后更新
+        
+        # 当前处理的消息ID
+        self._current_msg_id: Optional[str] = None
         
         # 统计
         self._frames_processed = 0
@@ -115,6 +119,9 @@ class VADModuleAdapter(IVADModule):
         # 处理音频帧事件 - 只在非IDLE状态处理
         elif event.type == EventType.AUDIO_FRAME_READY:
             if self._enabled and self._should_process_audio():
+                # 如果事件有msg_id，记录下来
+                if event.msg_id:
+                    self._current_msg_id = event.msg_id
                 self._process_audio_frame(event.data, event.metadata.get('sample_rate', 16000))
         
         # 处理系统停止事件
@@ -247,11 +254,24 @@ class VADModuleAdapter(IVADModule):
         if event_type == 'speech_start':
             print(f"\n{'='*60}")
             print(f"🎤 [{self.name}] 语音开始")
+            if self._current_msg_id:
+                print(f"   消息ID: {self._current_msg_id}")
+            
+            # 记录追踪
+            if self._current_msg_id:
+                tracker = get_message_tracker()
+                tracker.add_trace(
+                    msg_id=self._current_msg_id,
+                    module_name=self.name,
+                    event_type="speech_start",
+                    input_data={'event': 'audio_frame'}
+                )
             
             # 发布事件
             event = VADEventType(
                 EventType.VAD_SPEECH_START,
-                source=self.name
+                source=self.name,
+                msg_id=self._current_msg_id
             )
             self._controller.publish_event(event)
             
@@ -267,14 +287,30 @@ class VADModuleAdapter(IVADModule):
             self._speech_segments += 1
             print(f"\n{'='*60}")
             print(f"🔇 VAD: 语音结束 [第{self._speech_segments}段] (时长: {duration_ms:.0f}ms, 数据: {len(audio_data) if audio_data else 0} bytes)")
+            if self._current_msg_id:
+                print(f"   消息ID: {self._current_msg_id}")
             print(f"{'='*60}")
+            
+            # 记录追踪
+            if self._current_msg_id:
+                tracker = get_message_tracker()
+                tracker.add_trace(
+                    msg_id=self._current_msg_id,
+                    module_name=self.name,
+                    event_type="speech_end",
+                    output_data={
+                        'duration_ms': duration_ms,
+                        'audio_length': len(audio_data) if audio_data else 0
+                    }
+                )
             
             # 发布事件
             event = VADEventType(
                 EventType.VAD_SPEECH_END,
                 source=self.name,
                 audio_data=audio_data,
-                duration_ms=duration_ms
+                duration_ms=duration_ms,
+                msg_id=self._current_msg_id
             )
             self._controller.publish_event(event)
             

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Optional
 from src.core.interfaces import IModule
 from src.core.events import Event, EventType, ASREvent
 from src.orchestrator import Orchestrator
+from src.core.message_tracker import get_message_tracker
 
 if TYPE_CHECKING:
     from src.core.controller import SystemController
@@ -115,9 +116,10 @@ class OrchestratorModuleAdapter(IModule):
             event: ASR事件
         """
         try:
-            # 提取识别文本
+            # 提取识别文本和 msg_id
             text = event.data.get('text', '').strip()
             confidence = event.data.get('confidence', 0.0)
+            msg_id = event.msg_id
             
             if not text:
                 return
@@ -125,6 +127,18 @@ class OrchestratorModuleAdapter(IModule):
             print(f"\n{'='*60}")
             print(f"🎯 Orchestrator收到ASR结果: {text}")
             print(f"   置信度: {confidence:.2f}")
+            if msg_id:
+                print(f"   消息ID: {msg_id}")
+            
+            # 记录追踪
+            if msg_id:
+                tracker = get_message_tracker()
+                tracker.add_trace(
+                    msg_id=msg_id,
+                    module_name=self._name,
+                    event_type="orchestrator_input",
+                    input_data={'text': text, 'confidence': confidence}
+                )
             
             # 调用Orchestrator进行决策
             decision = self._orchestrator.process_query(text)
@@ -137,28 +151,43 @@ class OrchestratorModuleAdapter(IModule):
                 print(f"   参数: {decision.parameters}")
             print(f"{'='*60}\n")
             
+            # 记录决策结果
+            if msg_id:
+                tracker.add_trace(
+                    msg_id=msg_id,
+                    module_name=self._name,
+                    event_type="orchestrator_decision",
+                    output_data={
+                        'selected_agent': decision.selected_agent,
+                        'confidence': decision.confidence,
+                        'reasoning': decision.reasoning,
+                        'parameters': decision.parameters
+                    }
+                )
+            
             # 发送GUI更新事件，显示决策结果
-            self._publish_decision_to_gui(text, decision)
+            self._publish_decision_to_gui(text, decision, msg_id)
             
             # TODO: 这里可以发送事件给对应的Agent执行
             # 目前先打印日志，后续可以扩展
-            agent_response = self._dispatch_to_agent(decision.selected_agent, text, decision)
+            agent_response = self._dispatch_to_agent(decision.selected_agent, text, decision, msg_id)
             
             if agent_response:
-                self._publish_agent_response(agent_response)
+                self._publish_agent_response(agent_response, msg_id)
             
         except Exception as e:
             print(f"❌ Orchestrator处理ASR结果失败: {e}")
             import traceback
             traceback.print_exc()
     
-    def _publish_decision_to_gui(self, query: str, decision):
+    def _publish_decision_to_gui(self, query: str, decision, msg_id: Optional[str] = None):
         """
         发布决策结果到GUI
         
         Args:
             query: 用户查询
             decision: 决策结果
+            msg_id: 消息ID
         """
         from src.core.events import Event, EventType
         
@@ -166,6 +195,7 @@ class OrchestratorModuleAdapter(IModule):
         gui_event = Event.create(
             event_type=EventType.GUI_UPDATE_TEXT,
             source=self._name,
+            msg_id=msg_id,
             data={
                 'type': 'orchestrator_decision',
                 'query': query,
@@ -177,7 +207,7 @@ class OrchestratorModuleAdapter(IModule):
         )
         self._controller.publish_event(gui_event)
     
-    def _dispatch_to_agent(self, agent_name: str, query: str, decision):
+    def _dispatch_to_agent(self, agent_name: str, query: str, decision, msg_id: Optional[str] = None):
         """
         分发任务给Agent
         
@@ -185,7 +215,18 @@ class OrchestratorModuleAdapter(IModule):
             agent_name: Agent名称
             query: 用户查询
             decision: 决策结果
+            msg_id: 消息ID
         """
+        # 记录追踪
+        if msg_id:
+            tracker = get_message_tracker()
+            tracker.add_trace(
+                msg_id=msg_id,
+                module_name="agent_dispatcher",
+                event_type="dispatch_to_agent",
+                output_data={'agent_name': agent_name, 'query': query}
+            )
+        
         # 执行Agent
         agents_module = self._controller.get_module('agents')
         if not agents_module or not hasattr(agents_module, 'execute_agent'):
@@ -193,21 +234,36 @@ class OrchestratorModuleAdapter(IModule):
             return None
         
         response = agents_module.execute_agent(agent_name=agent_name, query=query, context={
-            'decision': decision}
+            'decision': decision, 'msg_id': msg_id}
         )
         print(f"🚀 [分发] {agent_name} <- '{query}' → {response.message}")
         
+        # 记录Agent响应
+        if msg_id:
+            tracker.add_trace(
+                msg_id=msg_id,
+                module_name=agent_name,
+                event_type="agent_response",
+                output_data={
+                    'message': response.message,
+                    'success': response.success,
+                    'data': response.data
+                }
+            )
+            tracker.update_response(msg_id, response.message)
+        
         # 如果Agent执行成功，发布TTS播报请求
         if response.success and response.message:
-            self._publish_tts_request(response.message)
+            self._publish_tts_request(response.message, msg_id)
         
         return response
 
-    def _publish_agent_response(self, response):
+    def _publish_agent_response(self, response, msg_id: Optional[str] = None):
         """将Agent响应通知GUI"""
         gui_event = Event.create(
             event_type=EventType.GUI_UPDATE_TEXT,
             source=self._name,
+            msg_id=msg_id,
             data={
                 'type': 'agent_response',
                 'agent': response.agent,
@@ -219,11 +275,12 @@ class OrchestratorModuleAdapter(IModule):
         )
         self._controller.publish_event(gui_event)
     
-    def _publish_tts_request(self, text: str):
+    def _publish_tts_request(self, text: str, msg_id: Optional[str] = None):
         """发布TTS播报请求"""
         tts_event = Event.create(
             event_type=EventType.TTS_SPEAK_REQUEST,
             source=self._name,
+            msg_id=msg_id,
             data={
                 'text': text,
                 'priority': 'high'
@@ -231,6 +288,18 @@ class OrchestratorModuleAdapter(IModule):
         )
         self._controller.publish_event(tts_event)
         print(f"🔊 [TTS] 请求播报: {text}")
+        
+        # 记录追踪
+        if msg_id:
+            tracker = get_message_tracker()
+            tracker.add_trace(
+                msg_id=msg_id,
+                module_name="tts",
+                event_type="tts_request",
+                input_data={'text': text}
+            )
+            # 完成整个消息追踪
+            tracker.complete_trace(msg_id)
     
     def get_statistics(self) -> dict:
         """获取统计信息"""

@@ -9,6 +9,7 @@ import numpy as np
 from src.core.interfaces import IWakewordModule
 from src.core.events import Event, EventType, WakewordEvent
 from src.wakeword import WakeWordFactory, WakeWordConfig, WakeWordResult, WakeWordState
+from src.core.message_tracker import get_message_tracker
 
 
 class WakewordModuleAdapter(IWakewordModule):
@@ -202,15 +203,32 @@ class WakewordModuleAdapter(IWakewordModule):
         if result and result['detected']:
             self._detections += 1
             
+            # 创建新的消息ID（新的对话开始）
+            tracker = get_message_tracker()
+            msg_id = tracker.create_message_id(session_type="wakeword")
+            
+            # 记录唤醒词检测
+            tracker.add_trace(
+                msg_id=msg_id,
+                module_name=self.name,
+                event_type="wakeword_detected",
+                output_data={
+                    'keyword': result['keyword'],
+                    'confidence': result['confidence']
+                }
+            )
+            
             print(f"\n{'='*60}")
             print(f"🎯 唤醒词检测: {result['keyword']} (置信度: {result['confidence']:.2f})")
+            print(f"   消息ID: {msg_id}")
             print(f"{'='*60}")
             
-            # 发布唤醒词检测事件
+            # 发布唤醒词检测事件（带上msg_id）
             event = WakewordEvent(
                 source=self.name,
                 keyword=result['keyword'],
-                confidence=result['confidence']
+                confidence=result['confidence'],
+                msg_id=msg_id
             )
             self._controller.publish_event(event)
             

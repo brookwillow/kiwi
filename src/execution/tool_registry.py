@@ -211,7 +211,7 @@ class ToolRegistry:
                 ToolParameter("position", "string", "位置", True, 
                             enum=["front", "rear", "all"])
             ]),
-            Tool("enable_seat_heating", "开启座椅加热", ToolCategory.CLIMATE, [
+            Tool("enable_seat_heating", "开启座椅加热, 关闭座椅加热", ToolCategory.CLIMATE, [
                 ToolParameter("seat", "string", "座椅", True,
                             enum=["driver", "passenger", "rear_left", "rear_right"]),
                 ToolParameter("level", "number", "加热级别(1-3)", False, default=2)

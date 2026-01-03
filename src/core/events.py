@@ -66,64 +66,70 @@ class Event:
     timestamp: float                # 时间戳
     data: Optional[Any] = None      # 事件数据
     metadata: Optional[dict] = None  # 元数据
+    msg_id: Optional[str] = None    # 消息追踪ID（用于追踪整个对话流程）
     
     @classmethod
-    def create(cls, event_type: EventType, source: str, data: Any = None, **metadata):
+    def create(cls, event_type: EventType, source: str, data: Any = None, msg_id: Optional[str] = None, **metadata):
         """创建事件"""
         return cls(
             type=event_type,
             source=source,
             timestamp=time.time(),
             data=data,
-            metadata=metadata or {}
+            metadata=metadata or {},
+            msg_id=msg_id
         )
     
     def __repr__(self):
-        return f"Event(type={self.type.value}, source={self.source}, timestamp={self.timestamp:.3f})"
+        msg_id_str = f", msg_id={self.msg_id[:12]}..." if self.msg_id else ""
+        return f"Event(type={self.type.value}, source={self.source}, timestamp={self.timestamp:.3f}{msg_id_str})"
 
 
 @dataclass
 class AudioFrameEvent(Event):
     """音频帧事件"""
-    def __init__(self, source: str, frame_data: Any, sample_rate: int):
+    def __init__(self, source: str, frame_data: Any, sample_rate: int, msg_id: Optional[str] = None):
         super().__init__(
             type=EventType.AUDIO_FRAME_READY,
             source=source,
             timestamp=time.time(),
             data=frame_data,
-            metadata={'sample_rate': sample_rate}
+            metadata={'sample_rate': sample_rate},
+            msg_id=msg_id
         )
 
 
 @dataclass
 class WakewordEvent(Event):
     """唤醒词事件"""
-    def __init__(self, source: str, keyword: str, confidence: float):
+    def __init__(self, source: str, keyword: str, confidence: float, msg_id: Optional[str] = None):
         super().__init__(
             type=EventType.WAKEWORD_DETECTED,
             source=source,
             timestamp=time.time(),
-            data={'keyword': keyword, 'confidence': confidence}
+            data={'keyword': keyword, 'confidence': confidence},
+            msg_id=msg_id
         )
 
 
 @dataclass
 class VADEvent(Event):
     """VAD事件"""
-    def __init__(self, event_type: EventType, source: str, audio_data: Any = None, duration_ms: float = 0):
+    def __init__(self, event_type: EventType, source: str, audio_data: Any = None, duration_ms: float = 0, msg_id: Optional[str] = None):
         super().__init__(
             type=event_type,
             source=source,
             timestamp=time.time(),
             data=audio_data,
-            metadata={'duration_ms': duration_ms}
+            metadata={'duration_ms': duration_ms},
+            msg_id=msg_id
         )
 
 
 @dataclass
 class ASREvent(Event):
     """ASR事件"""
-    def __init__(self, event_type: EventType, source: str, text: str = "", confidence: float = 0.0, latency_ms: float = 0.0):
+    def __init__(self, event_type: EventType, source: str, text: str = "", confidence: float = 0.0, latency_ms: float = 0.0, msg_id: Optional[str] = None):
         data = {'text': text, 'confidence': confidence}
         if latency_ms > 0:
             data['latency_ms'] = latency_ms
@@ -132,19 +138,21 @@ class ASREvent(Event):
             type=event_type,
             source=source,
             timestamp=time.time(),
-            data=data
+            data=data,
+            msg_id=msg_id
         )
 
 
 @dataclass
 class StateChangeEvent(Event):
     """状态变化事件"""
-    def __init__(self, source: str, from_state: str, to_state: str, reason: str = ""):
+    def __init__(self, source: str, from_state: str, to_state: str, reason: str = "", msg_id: Optional[str] = None):
         super().__init__(
             type=EventType.STATE_CHANGED,
             source=source,
             timestamp=time.time(),
-            data={'from_state': from_state, 'to_state': to_state, 'reason': reason}
+            data={'from_state': from_state, 'to_state': to_state, 'reason': reason},
+            msg_id=msg_id
         )
 
 
