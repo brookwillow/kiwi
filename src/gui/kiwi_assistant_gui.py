@@ -589,9 +589,13 @@ class KiwiVoiceAssistantGUI(QWidget):
             self.asr_adapter = ASRModuleAdapter(self.controller, asr_config)
             self.controller.register_module(self.asr_adapter)
             
-            # 4. 创建并注册Agents模块
-            self.agents_module = AgentsModule(self.controller,config_path="config/agents_config.yaml")
-            self.controller.register_module(self.agents_module)
+            # 4. 创建Agents模块并注册Agent适配器
+            self.agents_module = AgentsModule(self.controller, config_path="config/agents_config.yaml")
+            
+            # 创建并注册Agent适配器（adapter会在initialize时调用agent_manager.initialize）
+            from src.adapters.agent_adapter import AgentModuleAdapter
+            self.agent_adapter = AgentModuleAdapter(self.controller, self.agents_module)
+            self.controller.register_module(self.agent_adapter)
             
             # 5. 创建并注册Orchestrator模块
             # 从环境变量或配置读取API Key

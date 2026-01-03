@@ -190,7 +190,7 @@ class Orchestrator:
             可用的Agent列表
         """
         # 通过controller获取agents模块
-        agents_module = self.controller.get_module('agents')
+        agents_module = self.controller.get_module('agent_adapter')
         if agents_module and hasattr(agents_module, 'get_available_agents'):
             agents = agents_module.get_available_agents()
             return [

@@ -1,43 +1,37 @@
 """
-Agents module implementation moved under `src.agents`.
-This file contains the IModule-compatible wrapper that loads agent
-configurations and instantiates agent handlers from `src.agents.registry`.
+Agents Manager - 负责Agent的加载、配置和执行
+
+这是一个纯业务逻辑类，不继承IModule接口
+事件处理由agent_adapter负责
 """
 import yaml
 import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-from src.core.interfaces import IModule
-from src.core.events import Event, EventType
 from src.agents.registry import create_agent
 from src.agents.base import AgentResponse
 from src.core.events import AgentContext, SystemState
 
 
-class AgentsModule(IModule):
-    """Agents module - provides available agents to the system.
-
-    This is the same implementation previously located at
-    `src/modules/agents_module.py`, moved here so that all agent
-    implementations live under `src.agents`.
+class AgentsModule:
+    """
+    Agents Manager - 管理所有Agent的加载和执行
+    
+    职责：
+    - 加载Agent配置
+    - 实例化Agent handlers
+    - 召回记忆和构建上下文
+    - 执行Agent并返回响应
+    
+    注意：不处理事件，所有事件由agent_adapter处理
     """
 
     def __init__(self, controller, config_path: str = "config/agents_config.yaml"):
         self.controller = controller
-        self._name = "agents"
-        self._running = False
         self._agents: List[Dict[str, Any]] = []
         self._config_path = config_path
         self._agent_handlers: Dict[str, Any] = {}
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def is_running(self) -> bool:
-        return self._running
 
     def initialize(self) -> bool:
         """Initialize by loading agents from YAML config."""
@@ -93,26 +87,6 @@ class AgentsModule(IModule):
             import traceback
             traceback.print_exc()
             return False
-
-    def start(self) -> bool:
-        """Start the module."""
-        self._running = True
-        print("✅ Agents模块启动成功")
-        return True
-
-    def stop(self):
-        """Stop the module."""
-        self._running = False
-        print("🛑 Agents模块已停止")
-
-    def cleanup(self):
-        """Cleanup resources."""
-        self._agents.clear()
-        self._agent_handlers.clear()
-
-    def handle_event(self, event: Event):
-        """Handle events - AgentsModule does not process events by default."""
-        pass
 
     # ==================== Agents data access API ====================
 

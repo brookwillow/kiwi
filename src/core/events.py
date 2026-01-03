@@ -56,6 +56,10 @@ class EventType(Enum):
     TTS_SPEAK_START = "tts_speak_start"         # TTS开始播报
     TTS_SPEAK_END = "tts_speak_end"             # TTS播报完成
     TTS_SPEAK_ERROR = "tts_speak_error"         # TTS播报错误
+    
+    # === Agent事件 ===
+    AGENT_DISPATCH_REQUEST = "agent_dispatch_request"  # Agent分发请求
+    AGENT_RESPONSE = "agent_response"                  # Agent响应
 
 
 @dataclass
