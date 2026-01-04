@@ -23,7 +23,7 @@ class ASRConfig:
         if self.model not in ("whisper", "azure", "google", "local"):
             raise ValueError(f"Unsupported model: {self.model}")
         
-        if self.model_size not in ("tiny", "base", "small", "medium", "large"):
+        if self.model_size not in ("tiny","tiny.en", "base","base.en"):
             raise ValueError(f"Invalid model_size: {self.model_size}")
         
         if self.device not in ("auto", "cpu", "cuda", "mps"):

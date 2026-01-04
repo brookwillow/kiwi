@@ -1,6 +1,5 @@
 # Python
 __pycache__/
-*.py[cod]
 *$py.class
 *.so
 .Python
@@ -11,6 +10,9 @@ ENV/
 dist/
 build/
 
+# Ignore database files
+data/chroma_db/
+
 # 环境变量文件
 .env
 
@@ -19,7 +21,6 @@ build/
 .idea/
 *.swp
 *.swo
-*~
 
 # macOS
 .DS_Store

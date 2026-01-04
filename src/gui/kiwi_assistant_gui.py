@@ -572,7 +572,7 @@ class KiwiVoiceAssistantGUI(QWidget):
             asr_config = ASRConfig(
                 model=config.asr.settings['model'],
                 language=config.asr.settings['language'],
-                model_size='base',
+                model_size=config.asr.settings.get('size', 'base'),
                 device='auto'
             )
             

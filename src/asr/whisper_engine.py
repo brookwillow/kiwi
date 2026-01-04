@@ -139,6 +139,8 @@ class WhisperEngine(ASREngine):
                 )
             
             processing_time = time.time() - start_time
+
+            print(f"asr result: {result}")  ##############
             
             # 解析结果
             return self._parse_result(result, duration, processing_time)

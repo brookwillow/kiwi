@@ -34,6 +34,7 @@ modules:
   asr:
     enabled: true            # 是否启用ASR识别
     model: "whisper"
+    size: "base"            # Whisper模型大小：tiny, base
     language: "zh"
     min_audio_duration_ms: 500  # 最小音频长度（ms）- 短于此值不送ASR识别
   

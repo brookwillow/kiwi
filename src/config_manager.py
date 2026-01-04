@@ -135,6 +135,7 @@ class ConfigManager:
             settings={
                 'model': data['modules']['asr']['model'],
                 'language': data['modules']['asr']['language'],
+                'size': data['modules']['asr'].get('size', 'base'),
                 'min_audio_duration_ms': data['modules']['asr'].get('min_audio_duration_ms', 500)
             }
         )
