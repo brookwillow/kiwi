@@ -10,8 +10,9 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 from src.agents.registry import create_agent
-from src.agents.base import AgentResponse
+from src.agents.base_classes import AgentResponse, AgentStatus
 from src.core.events import AgentContext, SystemState
+from src.core.session_manager import get_session_manager
 
 
 class AgentsModule:
@@ -61,6 +62,7 @@ class AgentsModule:
                         name=agent.get('name'),
                         description=agent.get('description', ''),
                         capabilities=agent.get('capabilities', []),
+                        priority=agent.get('priority', 2),  # 默认优先级2（中等）
                         api_key=api_key
                     )
                     self._agent_handlers[handler.name] = handler
@@ -169,7 +171,7 @@ class AgentsModule:
             ]
         return []
     
-    def get_agent_context(self, query:str, agent_name: str) -> AgentContext:
+    def get_agent_context(self, query:str, agent_name: str, data: Optional[Dict[str, Any]] = None) -> AgentContext:
         """
         为agent构建上下文，统一召回记忆
         
@@ -186,7 +188,7 @@ class AgentsModule:
                 recent_memories=[],
                 related_memories=[],
                 long_term_memory=None,
-                system_states=[]
+                system_states=[],
             )
         
         agent_info = {
@@ -224,7 +226,8 @@ class AgentsModule:
             recent_memories=recent_memories,
             related_memories=related_memories,
             long_term_memory=long_term_memory,
-            system_states=system_states
+            system_states=system_states,
+            data=data or {}
         )
         
         # 5. 发送记忆召回事件到GUI（已禁用，显示效果不好）
@@ -274,14 +277,14 @@ class AgentsModule:
         except Exception as e:
             print(f"⚠️ 发送记忆召回事件失败: {e}")
 
-    def execute_agent(self, agent_name: str, query: str, context: Optional[Dict[str, Any]] = None) -> AgentResponse:
+    def execute_agent(self, agent_name: str, query: str, data: Optional[Dict[str, Any]] = None) -> AgentResponse:
         handler = self._agent_handlers.get(agent_name)
         if not handler:
             message = f"Agent {agent_name} 未启用或不存在，已忽略请求。"
-            return AgentResponse(agent=agent_name, success=False, query=query, message=message, data={})
+            return AgentResponse(agent=agent_name, status=AgentStatus.ERROR, query=query, message=message, data={})
         
         # 获取agent context
-        agent_context = self.get_agent_context(query=query, agent_name=agent_name)
+        agent_context = self.get_agent_context(query=query, agent_name=agent_name, data=data)
         
         # 为planner_agent传递agent_manager引用（通过扩展context）
         if agent_name == "planner_agent":

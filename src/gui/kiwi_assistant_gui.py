@@ -20,7 +20,7 @@ from PyQt5.QtCore import QTimer, Qt, QPropertyAnimation, QEasingCurve, pyqtPrope
 from PyQt5.QtGui import QFont, QColor
 
 from src.core.controller import SystemController
-from src.core.events import Event, EventType
+from src.core.events import Event, EventType, AgentStatus
 from src.adapters import (
     AudioModuleAdapter,
     WakewordModuleAdapter,
@@ -1086,7 +1086,7 @@ class KiwiVoiceAssistantGUI(QWidget):
         """处理Agent响应结果"""
         agent = response_data.get('agent', '')
         message = response_data.get('message', '')
-        success = response_data.get('success', False)
+        status = response_data.get('status', AgentStatus.COMPLETED)
         
         # 添加完整的历史记录（包含query、agent、response）
         if self._current_query_info:
@@ -1096,7 +1096,15 @@ class KiwiVoiceAssistantGUI(QWidget):
             confidence = self._current_query_info.get('confidence', 0)
             
             # 构建历史记录行
-            status_icon = "✅" if success else "❌"
+            # status_icon 总共有三种状态：✅ 成功，❌ 失败
+            print(f"_on_agent_response status: {status}")
+            if status.name == AgentStatus.COMPLETED.name:
+                status_icon = "✅"
+            elif status.name == AgentStatus.ERROR.name:
+                status_icon = "❌"
+            else:
+                status_icon = "🟢"
+
             history_line = f"{status_icon} [{timestamp}] {query}\n   → Agent: {agent_name} ({confidence:.0f}%)\n   → 回复: {message}\n"
             
             self.query_history_text.append(history_line)

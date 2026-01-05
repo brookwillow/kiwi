@@ -3,16 +3,15 @@ from __future__ import annotations
 
 from typing import Dict, Any, Optional
 
-from src.agents.base import AgentResponse
+from src.agents.base_classes import AgentResponse, ToolAgentBase
 from src.core.events import AgentContext
 from src.execution.tool_registry import ToolCategory
-from .base_tool_agent import BaseToolAgent
 
-
-class PhoneAgent(BaseToolAgent):
+class PhoneAgent(ToolAgentBase):
     name = "phone_agent"
 
-    def __init__(self, description: str, capabilities: list[str], api_key: Optional[str] = None):
+    def __init__(self, description: str, capabilities: list[str],
+                 priority: int = 2, api_key: Optional[str] = None):
         super().__init__(
             name=self.name,
             description=description,
@@ -21,5 +20,6 @@ class PhoneAgent(BaseToolAgent):
                 ToolCategory.COMMUNICATION,  # 通信系统工具
                 ToolCategory.INFORMATION      # 添加信息查询类别，支持状态查询
             ],
+            priority=priority,
             api_key=api_key
         )

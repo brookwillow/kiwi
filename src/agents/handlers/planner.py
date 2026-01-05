@@ -8,17 +8,17 @@ import logging
 from typing import Dict, Any, List, Optional
 from openai import OpenAI
 
-from src.agents.base import AgentResponse
+from src.agents.base_classes import AgentResponse,SimpleAgentBase
 from src.execution.tool_registry import ToolCategory
 
 
-class PlannerAgent:
+class PlannerAgent(SimpleAgentBase):
     """规划协调Agent - 处理需要多个agent协作的复杂任务"""
     
-    def __init__(self, description: str, capabilities: list[str], api_key: Optional[str] = None):
-        self.name = "planner_agent"
-        self.description = description
-        self.capabilities = capabilities
+    def __init__(self, description: str, capabilities: list[str],
+                 priority: int = 2, api_key: Optional[str] = None):
+        super().__init__(name="planner_agent", description=description,
+                        capabilities=capabilities, priority=priority)
         
         # 初始化LLM客户端
         self.api_key = api_key or os.getenv("DASHSCOPE_API_KEY")
@@ -60,8 +60,7 @@ class PlannerAgent:
         3. 根据执行结果调整计划
         4. 汇总最终结果
         """
-        from src.agents.base import AgentResponse
-        
+
         self.logger.info(f"PlannerAgent开始处理复杂任务: {query}")
         
         # 重置状态

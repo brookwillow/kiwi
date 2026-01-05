@@ -1,6 +1,14 @@
 # Agent系统架构说明
 
-## 整体架构
+## ⚠️ 重要更新
+
+**本文档描述的是旧的Agent架构。新的统一基类架构请参考：**
+- [Agent基类架构 (AGENT_BASE_CLASSES.md)](AGENT_BASE_CLASSES.md) - 新的统一基类体系
+- [Agent快速参考 (AGENT_QUICK_REFERENCE.md)](AGENT_QUICK_REFERENCE.md) - 快速选择指南
+
+---
+
+## 整体架构（旧版本）
 
 ```
 ┌─────────────────────────────────────────────────────────────┐

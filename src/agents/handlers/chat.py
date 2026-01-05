@@ -6,22 +6,23 @@ import os
 import re
 from ollama import chat
 
-from src.agents.base import AgentResponse
-from src.core.events import AgentContext
+from src.agents.base_classes import AgentResponse,SimpleAgentBase
+from src.core.events import AgentContext, AgentResponse, AgentStatus
 
 
-class ChatAgent:
+class ChatAgent(SimpleAgentBase):
     name = "chat_agent"
 
     def __init__(
         self,
         description: str,
         capabilities: list[str],
+        priority: int = 2,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
     ):
-        self.description = description
-        self.capabilities = capabilities
+        super().__init__(name=self.name, description=description, 
+                        capabilities=capabilities, priority=priority)
         self._ollama_model = os.getenv("OLLAMA_MODEL", "qwen3:8b")
         self._ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
@@ -68,7 +69,7 @@ class ChatAgent:
             print("Processed Model response:", content)  # Debugging: Print the cleaned model response
             return AgentResponse(
                 agent=self.name,
-                success=True,
+                status=AgentStatus.COMPLETED,
                 query=query,
                 message=content,
                 data={"intent": "chat", "model": f"ollama:{self._ollama_model}"},
@@ -95,5 +96,5 @@ class ChatAgent:
 
             data = {"intent": "chat"}
             return AgentResponse(
-                agent=self.name, success=True, query=query, message=message, data=data
+                agent=self.name, status=AgentStatus.COMPLETED, query=query, message=message, data=data
             )

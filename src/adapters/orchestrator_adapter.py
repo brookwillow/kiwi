@@ -6,7 +6,7 @@ import os
 from typing import TYPE_CHECKING, Optional
 
 from src.core.interfaces import IModule
-from src.core.events import Event, EventType, ASREvent
+from src.core.events import Event, EventType, ASREvent, AgentRequestEvent
 from src.orchestrator import Orchestrator
 from src.core.message_tracker import get_message_tracker
 
@@ -224,10 +224,29 @@ class OrchestratorModuleAdapter(IModule):
             )
         
         # 发送Agent分发请求事件
-        dispatch_event = Event.create(
-            event_type=EventType.AGENT_DISPATCH_REQUEST,
+        # dispatch_event = Event.create(
+        #     event_type=EventType.AGENT_DISPATCH_REQUEST,
+        #     source=self._name,
+        #     msg_id=msg_id,
+        #     data={
+        #         'agent_name': agent_name,
+        #         'query': query,
+        #         'decision': {
+        #             'selected_agent': decision.selected_agent,
+        #             'confidence': decision.confidence,
+        #             'reasoning': decision.reasoning,
+        #             'parameters': decision.parameters
+        #         }
+        #     }
+        # )
+
+        dispatch_event = AgentRequestEvent(
             source=self._name,
+            query=query,
+            context={},
             msg_id=msg_id,
+            session_id=decision.parameters.get('session_id', None),
+            session_action=decision.parameters.get('session_action', 'new'),
             data={
                 'agent_name': agent_name,
                 'query': query,
@@ -239,6 +258,7 @@ class OrchestratorModuleAdapter(IModule):
                 }
             }
         )
+        
         self._controller.publish_event(dispatch_event)
         print(f"🚀 [Orchestrator] 发送Agent分发请求: {agent_name} <- '{query}'")
     

@@ -5,7 +5,7 @@
 """
 from enum import Enum
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Optional, Protocol
 import time
 from dataclasses import dataclass, field
 from typing import Optional, Dict, List, Any
@@ -71,6 +71,7 @@ class Event:
     data: Optional[Any] = None      # 事件数据
     metadata: Optional[dict] = None  # 元数据
     msg_id: Optional[str] = None    # 消息追踪ID（用于追踪整个对话流程）
+    session_id: Optional[str] = None  # 会话ID（用于多轮对话）
     
     @classmethod
     def create(cls, event_type: EventType, source: str, data: Any = None, msg_id: Optional[str] = None, **metadata):
@@ -162,6 +163,22 @@ class StateChangeEvent(Event):
 
 
 @dataclass
+class AgentRequestEvent(Event):
+    
+    """Agent请求事件"""
+    def __init__(self, source: str, query: str, context: Dict[str, Any], data: Any = None, msg_id: Optional[str] = None, session_id: Optional[str] = None, session_action: str = 'new'):
+        self.session_action = session_action  # 'new' 或 'resume'
+        super().__init__(
+            type=EventType.AGENT_DISPATCH_REQUEST,
+            source=source,
+            timestamp=time.time(),
+            data=data,
+            msg_id=msg_id, 
+            session_id=session_id
+        )
+
+
+@dataclass
 class ShortTermMemory:
     """短期记忆（对话历史）"""
     query: str                          # 用户查询
@@ -202,6 +219,7 @@ class AgentInfo:
     name: str                          # Agent名称
     description: str                   # Agent描述
     capabilities: List[str]            # Agent能力列表
+    priority: int                       # 优先级
     enabled: bool = True               # 是否启用
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -242,6 +260,7 @@ class AgentContext:
     related_memories: List[ShortTermMemory]  # 相关的短期记忆（按语义相似度）
     long_term_memory: Optional[LongTermMemory]  # 长期记忆
     system_states: List[SystemState]   # 系统状态
+    data: Optional[Any]
     
     @property
     def short_term_memories(self) -> List[ShortTermMemory]:
@@ -257,3 +276,76 @@ class AgentContext:
                 merged.append(mem)
                 seen.add(mem.timestamp)
         return merged
+    
+@dataclass
+class AgentStatus(str, Enum):
+    """Agent响应状态"""
+    WAITING_INPUT = "waiting_input"  # 等待用户输入（会话Agent）
+    COMPLETED = "completed"          # 会话完成（会话Agent）
+    ERROR = "error"                  # 执行出错
+
+@dataclass
+class AgentResponse:
+    """
+    统一的Agent响应类
+    """
+    # 必选字段
+    agent: str                          # Agent名称
+    query: str                          # 原始查询
+    message: str                        # 响应消息（面向用户的文本）
+    status: AgentStatus                 # 状态（必选枚举）
+
+    
+    # 会话管理字段
+    session_id: Optional[str] = None    # 会话ID
+    prompt: Optional[str] = None        # 等待输入时的提示（status=waiting_input时必填）
+    
+    data: Dict[str, Any] = field(default_factory=dict)  # 结构化数据
+
+    @property
+    def success(self) -> bool:
+        """判断是否成功"""
+        return self.status in (AgentStatus.COMPLETED)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典"""
+        return {
+            'agent': self.agent,
+            'message': self.message,
+            'status': self.status.value,
+            'success': self.success,
+            'query': self.query,
+            'data': self.data,
+            'session_id': self.session_id,
+            'prompt': self.prompt,
+        }
+    
+    def is_session_response(self) -> bool:
+        """判断是否为会话响应"""
+        return self.session_id is not None
+    
+    def is_waiting_input(self) -> bool:
+        """判断是否等待用户输入"""
+        return self.status == AgentStatus.WAITING_INPUT
+    
+    def is_completed(self) -> bool:
+        """判断是否完成"""
+        return self.status in (AgentStatus.COMPLETED)
+    
+    def is_error(self) -> bool:
+        """判断是否有错误"""
+        return self.status == AgentStatus.ERROR
+
+@dataclass
+class IAgent(Protocol):
+    """
+    Agent协议接口
+    所有Agent都应该遵循这个协议
+    """
+    name: str
+    description: str
+    capabilities: list[str]
+    
+    def can_handle(self, query: str) -> bool:
+        """判断是否能处理该查询"""
+        ...

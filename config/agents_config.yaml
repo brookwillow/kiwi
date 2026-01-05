@@ -1,8 +1,13 @@
 # Agents 配置文件
+# priority: 优先级，只有三个等级
+#   3: 最高优先级（紧急/安全相关）- 不可被打断
+#   2: 中等优先级（一般功能）- 可被更高优先级打断
+#   1: 最低优先级（背景任务）- 可被任何更高优先级打断
 agents:
   - name: "music_agent"
     description: "音乐播放和控制Agent，负责处理音乐相关的请求"
     enabled: true
+    priority: 2  # 娱乐功能，最低优先级
     capabilities:
       - "播放音乐"
       - "暂停音乐"
@@ -14,6 +19,7 @@ agents:
   - name: "navigation_agent"
     description: "导航和路线规划Agent，负责处理导航相关的请求"
     enabled: true
+    priority: 2  # 导航是核心功能，最高优先级，不可被打断
     capabilities:
       - "路线规划"
       - "实时导航"
@@ -25,6 +31,7 @@ agents:
   - name: "vehicle_control_agent"
     description: "车辆控制Agent，负责控制车辆各项功能"
     enabled: true
+    priority: 3  # 车辆控制，最高优先级
     capabilities:
       - "开关车窗"
       - "控制空调"
@@ -36,6 +43,7 @@ agents:
   - name: "weather_agent"
     description: "天气查询Agent，负责查询天气信息"
     enabled: true
+    priority: 2  # 信息查询，中等优先级
     capabilities:
       - "查询当前天气"
       - "查询未来天气"
@@ -45,6 +53,7 @@ agents:
   - name: "chat_agent"
     description: "闲聊对话Agent，负责处理日常对话和闲聊"
     enabled: true
+    priority: 1  # 闲聊功能，最低优先级
     capabilities:
       - "日常对话"
       - "讲笑话"
@@ -53,6 +62,7 @@ agents:
   - name: "phone_agent"
     description: "电话通信Agent，负责处理电话和通信相关的请求"
     enabled: true
+    priority: 3  # 电话通信，最高优先级（安全相关），不可被打断
     capabilities:
       - "拨打电话"
       - "接听电话"
@@ -64,8 +74,18 @@ agents:
   - name: "planner_agent"
     description: "任务规划协调Agent，负责处理复杂的跨域任务"
     enabled: true
+    priority: 2  # 规划任务，中等优先级
     capabilities:
       - "任务分解"
       - "多Agent协调"
       - "执行计划管理"
       - "跨域任务处理"
+
+  - name: "system_agent"
+    description: "系统Agent, 处理系统异常"
+    enabled: true
+    priority: 3 
+    capabilities:
+      - "系统异常处理"
+      - "异常情况回复"
+      - "系统运行异常记录"

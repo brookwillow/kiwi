@@ -7,7 +7,7 @@ from typing import Optional, Callable
 from PyQt5.QtCore import QObject, pyqtSignal
 
 from src.core.interfaces import IGUIModule
-from src.core.events import Event, EventType
+from src.core.events import Event, EventType, AgentStatus
 
 
 class GUIModuleAdapter(QObject):
@@ -258,7 +258,7 @@ class GUIModuleAdapter(QObject):
             response_data = {
                 'agent': event.data.get('agent', ''),
                 'message': event.data.get('message', ''),
-                'success': event.data.get('success', False),
+                'status': event.data.get('status', AgentStatus.COMPLETED),
                 'data': event.data.get('data', {}),
                 'timestamp': event.timestamp
             }

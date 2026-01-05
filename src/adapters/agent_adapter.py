@@ -5,10 +5,11 @@ Agent 模块适配器
 from typing import TYPE_CHECKING, Optional
 
 from src.core.interfaces import IModule
-from src.core.events import Event, EventType
+from src.core.events import Event, EventType, AgentResponse, AgentRequestEvent
+from src.core.events import AgentStatus
 from src.core.message_tracker import get_message_tracker
-from src.agents.base import AgentResponse
 from typing import List, Dict, Any
+from src.core.session_manager import get_session_manager
 
 if TYPE_CHECKING:
     from src.core.controller import SystemController
@@ -29,6 +30,7 @@ class AgentModuleAdapter(IModule):
         self._controller = controller
         self._agent_manager = agent_manager
         self._running = False
+        self._session_manager = get_session_manager()
     
     @property
     def name(self) -> str:
@@ -93,7 +95,7 @@ class AgentModuleAdapter(IModule):
             )
             thread.start()
     
-    def _handle_agent_dispatch(self, event: Event):
+    def _handle_agent_dispatch(self, event: AgentRequestEvent):
         """
         处理Agent分发请求
         
@@ -105,6 +107,8 @@ class AgentModuleAdapter(IModule):
             agent_name = data.get('agent_name')
             query = data.get('query')
             msg_id = event.msg_id
+            session_id = event.session_id
+            session_action = event.session_action
             
             if not agent_name or not query:
                 print("⚠️ [AgentAdapter] 无效的分发请求")
@@ -112,6 +116,8 @@ class AgentModuleAdapter(IModule):
             
             print(f"\n{'='*60}")
             print(f"🤖 [AgentAdapter] 处理分发请求: {agent_name}")
+            print(f"   [AgentAdapter]会话操作: {session_action}")
+            print(f"   [AgentAdapter]会话ID: {session_id}")
             print(f"   查询: {query}")
             if msg_id:
                 print(f"   消息ID: {msg_id}")
@@ -126,15 +132,71 @@ class AgentModuleAdapter(IModule):
                     input_data={'agent_name': agent_name, 'query': query}
                 )
             
-            # 调用agent_manager执行Agent
-            response = self._agent_manager.execute_agent(
+            # if session_action == 'new':
+            #     # 获取 agent 配置，获取优先级
+            #     agent_config = self._agent_manager.get_agent_by_name(agent_name)
+            #     priority = agent_config.get('priority', 2) if agent_config else 2
+                
+            #     # 在 adapter 层创建 session（Agent 不再关心 session）
+            #     session = self._session_manager.create_session(
+            #         agent_name=agent_name,
+            #         priority=priority
+            #     )
+                
+            #     if session is None:
+            #         # Session 创建失败（被更高优先级阻止）
+            #         error_msg = "当前有更重要的任务正在执行，请稍后再试"
+            #         print(f"🚫 [AgentAdapter] {error_msg}")
+                    
+            #         # 返回错误响应
+            #         response = AgentResponse(
+            #             agent=agent_name,
+            #             query=query,
+            #             message=error_msg,
+            #             status=AgentStatus.ERROR,
+            #             data={"reason": "blocked_by_higher_priority"}
+            #         )
+            #         self._publish_agent_response(response, msg_id)
+            #         return
+            
+            #     print(f"✅ [AgentAdapter] 创建 session: {session.session_id[:8]}...")
+            
+            # 调用agent_manager执行Agent（Agent 不需要知道 session_id）
+            response: AgentResponse = self._agent_manager.execute_agent(
                 agent_name=agent_name,
                 query=query,
-                context=data
+                data=data
             )
             
-            print(f"💬 [AgentAdapter] Agent响应: {response.message}")
-            print(f"{'='*60}\n")
+            # 固定响应状态，避免动态属性问题
+            response_status = response.status
+     
+            # 使用 name 属性进行比较（因为 AgentStatus 继承自 str 导致 == 比较有问题）
+            status_name = response_status.name if isinstance(response_status, AgentStatus) else str(response_status)
+            
+            if status_name == "WAITING_INPUT":
+                response.session_id = session_id
+                print(f"⏳ [AgentAdapter] Agent {agent_name} 等待用户输入...")
+                self._session_manager.wait_for_input(
+                    session_id=session_id,
+                    prompt=response.prompt or response.message
+                )
+            elif status_name == "COMPLETED":
+                # 任务完成，关闭 session
+                print(f"✅ [AgentAdapter] 进入COMPLETED分支...")
+                self._session_manager.complete_session(session_id)
+                print(f"✅ [AgentAdapter] Session 已完成: {session_id}...")
+            elif status_name == "ERROR":
+                # 错误，关闭 session
+                print(f"❌ [AgentAdapter] 进入ERROR分支...")
+                self._session_manager.complete_session(session_id)
+                print(f"❌ [AgentAdapter] Session 出错: {session_id}...")
+            else:
+                print(f"⚠️ [AgentAdapter] 未匹配任何状态分支，当前状态名称: {status_name}")
+            
+            print(f" [AgentAdapter] Agent响应: {response.message}")
+            print(f" [AgentAdapter] 状态: {response.status.name}")
+            print(f" [AgentAdapter] session_id: {response.session_id}")
             
             # 记录Agent响应
             if msg_id:
@@ -144,7 +206,7 @@ class AgentModuleAdapter(IModule):
                     event_type="agent_response",
                     output_data={
                         'message': response.message,
-                        'success': response.success,
+                        'success': response.status == AgentStatus.COMPLETED,
                         'data': response.data
                     }
                 )
@@ -154,7 +216,7 @@ class AgentModuleAdapter(IModule):
             self._publish_agent_response(response, msg_id)
             
             # 如果Agent执行成功，发布TTS播报请求
-            if response.success and response.message:
+            if response.message:
                 self._publish_tts_request(response.message, msg_id)
                 
         except Exception as e:
@@ -170,6 +232,7 @@ class AgentModuleAdapter(IModule):
             response: Agent响应
             msg_id: 消息ID
         """
+        print(f"📢 [AgentAdapter] 发布Agent响应到GUI: {response.message}, 状态: {response.status}")
         gui_event = Event.create(
             event_type=EventType.GUI_UPDATE_TEXT,
             source=self._name,
@@ -179,7 +242,7 @@ class AgentModuleAdapter(IModule):
                 'agent': response.agent,
                 'query': response.query,
                 'message': response.message,
-                'success': response.success,
+                'status': response.status,
                 'data': response.data
             }
         )
