@@ -10,6 +10,7 @@ from openai import OpenAI
 
 from src.agents.base_classes import AgentResponse,SimpleAgentBase
 from src.execution.tool_registry import ToolCategory
+from src.core.events import AgentStatus
 
 
 class PlannerAgent(SimpleAgentBase):
@@ -89,7 +90,7 @@ class PlannerAgent(SimpleAgentBase):
         
         return AgentResponse(
             agent=self.name,
-            success=execution_result["all_success"],
+            status=AgentStatus.COMPLETED if execution_result["all_success"] else AgentStatus.ERROR,
             query=query,
             message=final_response,
             data={
