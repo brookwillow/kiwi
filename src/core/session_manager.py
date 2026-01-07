@@ -338,6 +338,32 @@ class SessionManager:
                 for state in ['running', 'waiting_input', 'paused', 'completed', 'error']
             }
         }
+    
+    def get_session_data(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """
+        获取会话的上下文数据
+        
+        Args:
+            session_id: 会话ID
+            
+        Returns:
+            会话的 context 数据，如果会话不存在返回 None
+        """
+        session = self._sessions.get(session_id)
+        return session.context if session else None
+    
+    def update_session_data(self, session_id: str, data: Dict[str, Any]):
+        """
+        更新会话的上下文数据
+        
+        Args:
+            session_id: 会话ID
+            data: 要更新的数据（会合并到现有 context 中）
+        """
+        session = self._sessions.get(session_id)
+        if session:
+            session.context.update(data)
+            session.updated_at = datetime.now().timestamp()
 
 
 # 全局实例

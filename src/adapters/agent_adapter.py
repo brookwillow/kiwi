@@ -5,7 +5,7 @@ Agent 模块适配器
 from typing import TYPE_CHECKING, Optional
 
 from src.core.interfaces import IModule
-from src.core.events import Event, EventType, AgentResponse, AgentRequestEvent
+from src.core.events import Event, EventType, AgentResponse, AgentRequestEvent, SessionAction
 from src.core.events import AgentStatus
 from src.core.message_tracker import get_message_tracker
 from typing import List, Dict, Any
@@ -161,11 +161,21 @@ class AgentModuleAdapter(IModule):
             
             #     print(f"✅ [AgentAdapter] 创建 session: {session.session_id[:8]}...")
             
+            # 准备上下文数据
+            context_data = event.payload.decision if event.payload.decision else {}
+            
+            # 如果是恢复 session，从 session 中获取保存的状态
+            if session_action == SessionAction.RESUME and session_id:
+                session_data = self._session_manager.get_session_data(session_id)
+                if session_data and 'planner_state' in session_data:
+                    context_data['planner_state'] = session_data['planner_state']
+                    print(f"🔄 [AgentAdapter] 恢复 planner 状态")
+            
             # 调用agent_manager执行Agent（Agent 不需要知道 session_id）
             response: AgentResponse = self._agent_manager.execute_agent(
                 agent_name=agent_name,
                 query=query,
-                data=event.payload.decision  # 使用 payload 中的 decision
+                data=context_data
             )
             
             # 固定响应状态，避免动态属性问题
@@ -176,6 +186,15 @@ class AgentModuleAdapter(IModule):
             
             if status_name == "WAITING_INPUT":
                 print(f"⏳ [AgentAdapter] Agent {agent_name} 等待用户输入...")
+                
+                # 保存 planner 状态到 session（如果有）
+                if response.data and 'planner_state' in response.data:
+                    self._session_manager.update_session_data(
+                        session_id=session_id,
+                        data={'planner_state': response.data['planner_state']}
+                    )
+                    print(f"💾 [AgentAdapter] 已保存 planner 状态到 session")
+                
                 self._session_manager.wait_for_input(
                     session_id=session_id,
                     prompt=response.message

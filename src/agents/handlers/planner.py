@@ -64,28 +64,51 @@ class PlannerAgent(SimpleAgentBase):
 
         self.logger.info(f"PlannerAgent开始处理复杂任务: {query}")
         
-        # 重置状态
-        self.current_plan = []
-        self.execution_history = []
-        self._current_user_request = query  # 保存原始查询供子任务使用
+        # 检查是否是恢复执行（从 context 中恢复状态）
+        is_resume = False
+        if context and 'planner_state' in context:
+            planner_state = context['planner_state']
+            self.current_plan = planner_state.get('plan', [])
+            self.execution_history = planner_state.get('execution_history', [])
+            self._current_user_request = planner_state.get('original_query', query)
+            is_resume = True
+            self.logger.info(f"恢复执行 - 已完成 {len(self.execution_history)}/{len(self.current_plan)} 个任务")
+        else:
+            # 首次执行，重置状态
+            self.current_plan = []
+            self.execution_history = []
+            self._current_user_request = query  # 保存原始查询供子任务使用
         
-        # 阶段1: 生成任务计划
-        plan_result = self._generate_plan(query, context)
-        if not plan_result["success"]:
-            return AgentResponse(
-                agent=self.name,
-                status=AgentStatus.ERROR,
-                query=query,
-                message="抱歉，我无法为这个任务制定执行计划。"
-            )
-        
-        self.current_plan = plan_result["tasks"]
-        self.logger.info(f"任务计划已生成，共{len(self.current_plan)}个步骤")
+        # 阶段1: 生成任务计划（仅首次执行）
+        if not is_resume:
+            plan_result = self._generate_plan(query, context)
+            if not plan_result["success"]:
+                # 如果是"单个agent可以处理"的情况，返回友好的提示而不是错误
+                reason = plan_result.get("reason", "")
+                if reason == "单个agent可以处理":
+                    return AgentResponse(
+                        agent=self.name,
+                        status=AgentStatus.COMPLETED,
+                        query=query,
+                        message="这个任务不需要复杂的规划，您可以直接向其他专门的助手提出具体需求。"
+                    )
+                else:
+                    # 其他错误情况（JSON解析失败、验证失败等）
+                    self.logger.error(f"任务规划失败: {reason}")
+                    return AgentResponse(
+                        agent=self.name,
+                        status=AgentStatus.ERROR,
+                        query=query,
+                        message="抱歉，我无法为这个任务制定执行计划。"
+                    )
+            
+            self.current_plan = plan_result["tasks"]
+            self.logger.info(f"任务计划已生成，共{len(self.current_plan)}个步骤")
         
         # 阶段2: 执行任务计划
-        execution_result = self._execute_plan(context)
+        execution_result = self._execute_plan(context, user_input=query if is_resume else None)
         
-        # 如果有任务需要用户输入，返回 WAITING_INPUT
+        # 如果有任务需要用户输入，返回 WAITING_INPUT 并保存状态
         if execution_result.get("waiting_input"):
             pending_task = execution_result.get("pending_task", {})
             return AgentResponse(
@@ -96,7 +119,13 @@ class PlannerAgent(SimpleAgentBase):
                 data={
                     "plan": self.current_plan,
                     "execution_history": self.execution_history,
-                    "pending_task": pending_task
+                    "pending_task": pending_task,
+                    # 保存状态，供下次恢复使用
+                    "planner_state": {
+                        "plan": self.current_plan,
+                        "execution_history": self.execution_history,
+                        "original_query": self._current_user_request
+                    }
                 }
             )
         
@@ -215,12 +244,21 @@ class PlannerAgent(SimpleAgentBase):
         
         return True
     
-    def _execute_plan(self, context: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    def _execute_plan(self, context: Optional[Dict[str, Any]], user_input: Optional[str] = None) -> Dict[str, Any]:
         """
         执行任务计划
         按照依赖关系依次执行，每次执行后评估是否需要调整计划
+        
+        Args:
+            context: 上下文信息
+            user_input: 用户补充的输入（恢复执行时）
         """
+        # 找到已完成的任务
         completed_tasks = set()
+        for record in self.execution_history:
+            if record['status'] == 'completed':
+                completed_tasks.add(record['task_id'])
+        
         all_success = True
         
         # 获取agent_manager（从context中传入）
@@ -229,9 +267,13 @@ class PlannerAgent(SimpleAgentBase):
             self.logger.error("无法获取agent_manager")
             return {"all_success": False, "message": "系统错误：无法访问agent管理器"}
         
-        # 执行任务（简化版：按顺序执行，后续可以支持并行）
+        # 找到待执行的任务（跳过已完成的）
         for task in self.current_plan:
             task_id = task["task_id"]
+            
+            # 跳过已完成的任务
+            if task_id in completed_tasks:
+                continue
             
             # 检查依赖是否完成
             depends_on = task.get("depends_on", [])
@@ -242,7 +284,13 @@ class PlannerAgent(SimpleAgentBase):
             # 执行任务
             self.logger.info(f"执行任务{task_id}: {task['description']}")
             
-            result = self._execute_single_task(task, agent_manager, context)
+            # 如果是恢复执行，将用户输入传递给当前任务
+            task_context = context.copy() if context else {}
+            if user_input:
+                task_context['user_input'] = user_input
+                self.logger.info(f"传递用户补充信息: {user_input}")
+            
+            result = self._execute_single_task(task, agent_manager, task_context)
             
             # 判断任务状态
             task_status = result.get("status", "error")
@@ -351,13 +399,14 @@ class PlannerAgent(SimpleAgentBase):
             return {
                 "status": status_value,
                 "response": result.message,
-                "error": None if result.status == AgentStatus.COMPLETED else None
+                "error": None if result.status == AgentStatus.COMPLETED else result.message
             }
             
         except Exception as e:
             self.logger.error(f"执行任务时出错: {e}")
             return {
-                "success": False,
+                "status": "error",
+                "response": "",
                 "error": str(e)
             }
     
