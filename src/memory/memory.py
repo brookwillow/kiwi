@@ -4,7 +4,7 @@ import ollama
 import chromadb
 from chromadb.config import Settings
 from typing import List, Optional, Dict, Any
-from src.core.events import ShortTermMemory, LongTermMemory
+from src.core.types import ShortTermMemory, LongTermMemory
 
 
 

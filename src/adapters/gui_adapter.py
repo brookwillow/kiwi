@@ -151,8 +151,8 @@ class GUIModuleAdapter(QObject):
     def _on_wakeword_detected(self, event: Event):
         """处理唤醒词检测事件"""
         data = {
-            'keyword': event.data.get('keyword', 'unknown'),
-            'confidence': event.data.get('confidence', 0.0),
+            'keyword': event.payload.keyword,
+            'confidence': event.payload.confidence,
             'timestamp': event.timestamp
         }
         self.wakeword_detected_signal.emit(data)
@@ -166,13 +166,8 @@ class GUIModuleAdapter(QObject):
     
     def _on_vad_speech_end(self, event: Event):
         """处理语音结束事件"""
-        # duration_ms在metadata中
-        duration_ms = 0
-        if isinstance(event.metadata, dict):
-            duration_ms = event.metadata.get('duration_ms', 0)
-        
         data = {
-            'duration_ms': duration_ms,
+            'duration_ms': event.payload.duration_ms if event.payload else 0,
             'timestamp': event.timestamp
         }
         self.vad_speech_end_signal.emit(data)
@@ -187,31 +182,26 @@ class GUIModuleAdapter(QObject):
     def _on_asr_success(self, event: Event):
         """处理ASR识别成功事件"""
         data = {
-            'text': event.data.get('text', ''),
-            'confidence': event.data.get('confidence', 0.0),
-            'latency_ms': event.data.get('latency_ms', 0.0),
+            'text': event.payload.text,
+            'confidence': event.payload.confidence,
+            'latency_ms': event.payload.latency_ms,
             'timestamp': event.timestamp
         }
         self.asr_result_signal.emit(data)
     
     def _on_asr_failed(self, event: Event):
         """处理ASR识别失败事件"""
-        error = event.data.get('error', 'Unknown error')
+        # ASR失败事件可能没有 payload，或者 payload 中包含错误信息
+        error = 'Unknown error'
+        if event.payload and hasattr(event.payload, 'text'):
+            error = event.payload.text or error
         self.asr_error_signal.emit(error)
     
     def _on_state_changed(self, event: Event):
         """处理状态变化事件"""
-        # 处理不同类型的event.data
-        if isinstance(event.data, dict):
-            old_state = event.data.get('old_state', '')
-            new_state = event.data.get('new_state', '')
-        else:
-            old_state = ''
-            new_state = ''
-        
         data = {
-            'old_state': old_state,
-            'new_state': new_state,
+            'old_state': event.payload.from_state if event.payload else '',
+            'new_state': event.payload.to_state if event.payload else '',
             'timestamp': event.timestamp
         }
         self.state_changed_signal.emit(data)
@@ -219,36 +209,35 @@ class GUIModuleAdapter(QObject):
     def _on_audio_frame(self, event: Event):
         """处理音频帧事件（用于波形显示）"""
         # 注意：这个事件频率很高，谨慎处理
-        # event.data 直接就是numpy数组
-        import numpy as np
-        
-        audio_data = event.data if isinstance(event.data, np.ndarray) else None
-        sample_rate = event.metadata.get('sample_rate', 16000) if isinstance(event.metadata, dict) else 16000
+        # 使用新的 Payload 模式获取数据
+        if not event.payload:
+            return
         
         data = {
-            'audio_data': audio_data,
-            'sample_rate': sample_rate,
+            'audio_data': event.payload.frame_data,
+            'sample_rate': event.payload.sample_rate,
             'timestamp': event.timestamp
         }
         # 只在GUI需要更新时发送信号
-        if self._running and audio_data is not None:
+        if self._running and event.payload.frame_data is not None:
             self.audio_frame_signal.emit(data)
     
     def _on_gui_update_text(self, event: Event):
         """处理GUI文本更新事件（包括Orchestrator决策结果和Agent响应）"""
-        if not isinstance(event.data, dict):
+        # GUI_UPDATE_TEXT 使用 payload 传递数据
+        if not event.payload or not isinstance(event.payload, dict):
             return
         
-        update_type = event.data.get('type', '')
+        update_type = event.payload.get('type', '')
         
         # 处理Orchestrator决策结果
         if update_type == 'orchestrator_decision':
             decision_data = {
-                'query': event.data.get('query', ''),
-                'agent': event.data.get('agent', ''),
-                'confidence': event.data.get('confidence', 0.0),
-                'reasoning': event.data.get('reasoning', ''),
-                'parameters': event.data.get('parameters', {}),
+                'query': event.payload.get('query', ''),
+                'agent': event.payload.get('agent', ''),
+                'confidence': event.payload.get('confidence', 0.0),
+                'reasoning': event.payload.get('reasoning', ''),
+                'parameters': event.payload.get('parameters', {}),
                 'timestamp': event.timestamp
             }
             self.orchestrator_decision_signal.emit(decision_data)
@@ -256,21 +245,21 @@ class GUIModuleAdapter(QObject):
         # 处理Agent响应结果
         elif update_type == 'agent_response':
             response_data = {
-                'agent': event.data.get('agent', ''),
-                'message': event.data.get('message', ''),
-                'status': event.data.get('status', AgentStatus.COMPLETED),
-                'data': event.data.get('data', {}),
+                'agent': event.payload.get('agent', ''),
+                'message': event.payload.get('message', ''),
+                'status': event.payload.get('status', AgentStatus.COMPLETED),
+                'data': event.payload.get('data', {}),
                 'timestamp': event.timestamp
             }
             self.agent_response_signal.emit(response_data)
         
         # 处理记忆召回事件
-        elif event.data.get('event_type') == 'memory_recall':
+        elif event.payload.get('event_type') == 'memory_recall':
             recall_data = {
-                'agent_name': event.data.get('agent_name', ''),
-                'recent_memories': event.data.get('recent_memories', []),
-                'related_memories': event.data.get('related_memories', []),
-                'long_term_memory': event.data.get('long_term_memory', {}),
+                'agent_name': event.payload.get('agent_name', ''),
+                'recent_memories': event.payload.get('recent_memories', []),
+                'related_memories': event.payload.get('related_memories', []),
+                'long_term_memory': event.payload.get('long_term_memory', {}),
                 'timestamp': event.timestamp
             }
             self.memory_recall_signal.emit(recall_data)

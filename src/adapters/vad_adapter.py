@@ -8,7 +8,7 @@ import numpy as np
 from collections import deque
 
 from src.core.interfaces import IVADModule
-from src.core.events import Event, EventType, VADEvent as VADEventType
+from src.core.events import Event, EventType, VADEvent as VADEventType, VADPayload
 from src.vad import VADFactory, VADConfig, VADResult, VADEvent, VADState
 from src.core.message_tracker import get_message_tracker
 
@@ -109,20 +109,24 @@ class VADModuleAdapter(IVADModule):
         
         # 处理唤醒词事件 - 启动VAD延迟
         if event.type == EventType.WAKEWORD_DETECTED:
+            # 记录当前对话的 msg_id（从唤醒事件获取）
+            if hasattr(event, 'msg_id') and event.msg_id:
+                self._current_msg_id = event.msg_id
+                print(f"🔗 [{self.name}] 关联消息ID: {self._current_msg_id}")
+            
             if hasattr(self._engine, 'on_wakeword_detected'):
                 self._engine.on_wakeword_detected()
         
         # 处理唤醒词重置事件 - 重置VAD引擎
         elif event.type == EventType.WAKEWORD_RESET:
             self.reset()
+            self._current_msg_id = None  # 清除 msg_id
         
         # 处理音频帧事件 - 只在非IDLE状态处理
         elif event.type == EventType.AUDIO_FRAME_READY:
             if self._enabled and self._should_process_audio():
-                # 如果事件有msg_id，记录下来
-                if event.msg_id:
-                    self._current_msg_id = event.msg_id
-                self._process_audio_frame(event.data, event.metadata.get('sample_rate', 16000))
+                # AudioFrameEvent 没有 msg_id，使用已保存的 _current_msg_id
+                self._process_audio_frame(event.payload.frame_data, event.payload.sample_rate)
         
         # 处理系统停止事件
         elif event.type == EventType.SYSTEM_STOP:
@@ -269,8 +273,13 @@ class VADModuleAdapter(IVADModule):
             
             # 发布事件
             event = VADEventType(
-                EventType.VAD_SPEECH_START,
+                event_type=EventType.VAD_SPEECH_START,
                 source=self.name,
+                payload=VADPayload(
+                    audio_data=None,
+                    duration_ms=0,
+                    is_speech=True
+                ),
                 msg_id=self._current_msg_id
             )
             self._controller.publish_event(event)
@@ -306,10 +315,13 @@ class VADModuleAdapter(IVADModule):
             
             # 发布事件
             event = VADEventType(
-                EventType.VAD_SPEECH_END,
+                event_type=EventType.VAD_SPEECH_END,
                 source=self.name,
-                audio_data=audio_data,
-                duration_ms=duration_ms,
+                payload=VADPayload(
+                    audio_data=audio_data,
+                    duration_ms=duration_ms,
+                    is_speech=False  # speech ended
+                ),
                 msg_id=self._current_msg_id
             )
             self._controller.publish_event(event)

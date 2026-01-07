@@ -11,7 +11,7 @@ from typing import List, Dict, Any, Optional
 
 from src.agents.registry import create_agent
 from src.agents.base_classes import AgentResponse, AgentStatus
-from src.core.events import AgentContext, SystemState
+from src.core.types import AgentContext, SystemState
 from src.core.session_manager import get_session_manager
 
 
@@ -281,7 +281,7 @@ class AgentsModule:
         handler = self._agent_handlers.get(agent_name)
         if not handler:
             message = f"Agent {agent_name} 未启用或不存在，已忽略请求。"
-            return AgentResponse(agent=agent_name, status=AgentStatus.ERROR, query=query, message=message, data={})
+            return AgentResponse(agent=agent_name, status=AgentStatus.ERROR, query=query, message=message)
         
         # 获取agent context
         agent_context = self.get_agent_context(query=query, agent_name=agent_name, data=data)

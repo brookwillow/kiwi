@@ -5,7 +5,8 @@
 """
 from abc import ABC, abstractmethod
 from typing import Optional, Callable, Any
-from .events import Event, ShortTermMemory, LongTermMemory
+from .events import Event
+from .types import ShortTermMemory, LongTermMemory
 
 
 class IModule(ABC):

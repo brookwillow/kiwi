@@ -4,8 +4,8 @@ Orchestrator 模块
 通过SystemController访问其他模块
 """
 
-from src.core.events import ShortTermMemory, LongTermMemory
-from src.core.events import OrchestratorContext, OrchestratorInput, OrchestratorDecision, QueryType, SystemState, AgentInfo
+from src.core.types import ShortTermMemory, LongTermMemory
+from src.core.types import OrchestratorContext, OrchestratorInput, OrchestratorDecision, QueryType, SystemState, AgentInfo
 
 from .llm_decision import LLMDecisionMaker, MockLLMDecisionMaker
 from .orchestrator import Orchestrator

@@ -5,7 +5,7 @@ LLM决策器 - 基于阿里百炼平台
 import json
 from typing import Dict, Any, Optional
 from openai import OpenAI
-from src.core.events import OrchestratorContext, OrchestratorDecision
+from src.core.types import OrchestratorContext, OrchestratorDecision
 
 class LLMDecisionMaker:
     """LLM决策器"""

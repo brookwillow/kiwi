@@ -15,7 +15,7 @@ from .base_classes import (
     ToolAgentBase,
 )
 
-from src.core.events import IAgent
+from src.core.types import IAgent
 
 __all__ = [
     # 响应类型

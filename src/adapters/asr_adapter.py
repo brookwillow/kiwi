@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 
 from src.core.interfaces import IASRModule
-from src.core.events import Event, EventType, ASREvent as ASREventType
+from src.core.events import Event, EventType, ASREvent as ASREventType, ASRPayload
 from src.asr import create_asr_engine, ASRConfig
 from src.core.message_tracker import get_message_tracker
 
@@ -130,13 +130,8 @@ class ASRModuleAdapter(IASRModule):
                 if event.msg_id:
                     self._current_msg_id = event.msg_id
                 
-                # event.data可能是字典或直接是bytes
-                if isinstance(event.data, dict):
-                    audio_data = event.data.get('audio_data')
-                elif isinstance(event.data, bytes):
-                    audio_data = event.data
-                else:
-                    audio_data = None
+                # 使用强类型 payload 获取音频数据
+                audio_data = event.payload.audio_data
                     
                 if audio_data is not None:
                     self._start_recognition(audio_data)
@@ -253,10 +248,11 @@ class ASRModuleAdapter(IASRModule):
         
         # 发送ASR开始识别事件
         try:
-            start_event = Event.create(
+            start_event = ASREventType(
                 event_type=EventType.ASR_RECOGNITION_START,
                 source=self.name,
-                msg_id=self._current_msg_id
+                payload=ASRPayload(text="", confidence=0.0, is_partial=False),
+                msg_id=self._current_msg_id or ""
             )
             self._controller.publish_event(start_event)
             print(f"📤 [ASR] 已发送 ASR_RECOGNITION_START 事件")
@@ -310,11 +306,14 @@ class ASRModuleAdapter(IASRModule):
                 
                 # 发布识别成功事件
                 event = ASREventType(
-                    EventType.ASR_RECOGNITION_SUCCESS,
+                    event_type=EventType.ASR_RECOGNITION_SUCCESS,
                     source=self.name,
-                    text=text,
-                    confidence=confidence,
-                    latency_ms=latency_ms,
+                    payload=ASRPayload(
+                        text=text,
+                        confidence=confidence,
+                        is_partial=False,
+                        latency_ms=latency_ms
+                    ),
                     msg_id=self._current_msg_id
                 )
                 self._controller.publish_event(event)
@@ -333,10 +332,14 @@ class ASRModuleAdapter(IASRModule):
                 
                 # 发布识别失败事件
                 event = ASREventType(
-                    EventType.ASR_RECOGNITION_FAILED,
+                    event_type=EventType.ASR_RECOGNITION_FAILED,
                     source=self.name,
-                    text="",  # 空文本表示失败
-                    confidence=0.0
+                    payload=ASRPayload(
+                        text="",
+                        confidence=0.0,
+                        is_partial=False
+                    ),
+                    msg_id=self._current_msg_id or ""
                 )
                 self._controller.publish_event(event)
                 
@@ -353,10 +356,14 @@ class ASRModuleAdapter(IASRModule):
             
             # 发布识别失败事件
             event = ASREventType(
-                EventType.ASR_RECOGNITION_FAILED,
+                event_type=EventType.ASR_RECOGNITION_FAILED,
                 source=self.name,
-                text=f"Error: {str(e)}",  # 错误信息放在text中
-                confidence=0.0
+                payload=ASRPayload(
+                    text=f"Error: {str(e)}",
+                    confidence=0.0,
+                    is_partial=False
+                ),
+                msg_id=self._current_msg_id or ""
             )
             self._controller.publish_event(event)
             

@@ -6,9 +6,9 @@ Orchestrator - 编排者模块
 """
 import time
 from typing import Optional, Dict, Any, TYPE_CHECKING, Tuple
-from src.core.events import OrchestratorContext, OrchestratorInput, OrchestratorDecision, QueryType, SystemState, AgentInfo
+from src.core.types import OrchestratorContext, OrchestratorInput, OrchestratorDecision, QueryType, SystemState, AgentInfo
 from .llm_decision import LLMDecisionMaker, MockLLMDecisionMaker
-from src.core.events import ShortTermMemory, LongTermMemory
+from src.core.types import ShortTermMemory, LongTermMemory
 from src.core.session_manager import get_session_manager
 
 if TYPE_CHECKING:

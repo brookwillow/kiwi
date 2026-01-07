@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Dict, Any, Optional
 
 from src.agents.base_classes import AgentResponse, ToolAgentBase
-from src.core.events import AgentContext
+from src.core.types import AgentContext
 from src.execution.tool_registry import ToolCategory
 
 class PhoneAgent(ToolAgentBase):

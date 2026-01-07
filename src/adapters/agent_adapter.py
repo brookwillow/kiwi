@@ -103,9 +103,9 @@ class AgentModuleAdapter(IModule):
             event: 分发请求事件
         """
         try:
-            data = event.data
-            agent_name = data.get('agent_name')
-            query = data.get('query')
+            # 使用强类型 payload
+            agent_name = event.payload.agent_name
+            query = event.payload.query
             msg_id = event.msg_id
             session_id = event.session_id
             session_action = event.session_action
@@ -165,7 +165,7 @@ class AgentModuleAdapter(IModule):
             response: AgentResponse = self._agent_manager.execute_agent(
                 agent_name=agent_name,
                 query=query,
-                data=data
+                data=event.payload.decision  # 使用 payload 中的 decision
             )
             
             # 固定响应状态，避免动态属性问题
@@ -175,11 +175,10 @@ class AgentModuleAdapter(IModule):
             status_name = response_status.name if isinstance(response_status, AgentStatus) else str(response_status)
             
             if status_name == "WAITING_INPUT":
-                response.session_id = session_id
                 print(f"⏳ [AgentAdapter] Agent {agent_name} 等待用户输入...")
                 self._session_manager.wait_for_input(
                     session_id=session_id,
-                    prompt=response.prompt or response.message
+                    prompt=response.message
                 )
             elif status_name == "COMPLETED":
                 # 任务完成，关闭 session
@@ -196,7 +195,6 @@ class AgentModuleAdapter(IModule):
             
             print(f" [AgentAdapter] Agent响应: {response.message}")
             print(f" [AgentAdapter] 状态: {response.status.name}")
-            print(f" [AgentAdapter] session_id: {response.session_id}")
             
             # 记录Agent响应
             if msg_id:
@@ -236,8 +234,7 @@ class AgentModuleAdapter(IModule):
         gui_event = Event.create(
             event_type=EventType.GUI_UPDATE_TEXT,
             source=self._name,
-            msg_id=msg_id,
-            data={
+            payload={
                 'type': 'agent_response',
                 'agent': response.agent,
                 'query': response.query,
@@ -261,8 +258,7 @@ class AgentModuleAdapter(IModule):
         tts_event = Event.create(
             event_type=EventType.TTS_SPEAK_REQUEST,
             source=self._name,
-            msg_id=msg_id,
-            data={
+            payload={
                 'text': text,
                 'priority': 'high'
             }

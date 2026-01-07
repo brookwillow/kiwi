@@ -7,7 +7,8 @@ import re
 from ollama import chat
 
 from src.agents.base_classes import AgentResponse,SimpleAgentBase
-from src.core.events import AgentContext, AgentResponse, AgentStatus
+from src.core.events import AgentResponse, AgentStatus
+from src.core.types import AgentContext
 
 
 class ChatAgent(SimpleAgentBase):

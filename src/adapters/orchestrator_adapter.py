@@ -6,7 +6,7 @@ import os
 from typing import TYPE_CHECKING, Optional
 
 from src.core.interfaces import IModule
-from src.core.events import Event, EventType, ASREvent, AgentRequestEvent
+from src.core.events import Event, EventType, ASREvent, AgentRequestEvent, AgentRequestPayload
 from src.orchestrator import Orchestrator
 from src.core.message_tracker import get_message_tracker
 
@@ -117,8 +117,8 @@ class OrchestratorModuleAdapter(IModule):
         """
         try:
             # 提取识别文本和 msg_id
-            text = event.data.get('text', '').strip()
-            confidence = event.data.get('confidence', 0.0)
+            text = event.payload.text.strip()
+            confidence = event.payload.confidence
             msg_id = event.msg_id
             
             if not text:
@@ -187,12 +187,11 @@ class OrchestratorModuleAdapter(IModule):
         """
         from src.core.events import Event, EventType
         
-        # 发送GUI更新事件
+        # 发送GUI更新事件（普通 Event，使用 payload 传递数据）
         gui_event = Event.create(
             event_type=EventType.GUI_UPDATE_TEXT,
             source=self._name,
-            msg_id=msg_id,
-            data={
+            payload={
                 'type': 'orchestrator_decision',
                 'query': query,
                 'agent': decision.selected_agent,
@@ -242,21 +241,20 @@ class OrchestratorModuleAdapter(IModule):
 
         dispatch_event = AgentRequestEvent(
             source=self._name,
-            query=query,
-            context={},
-            msg_id=msg_id,
-            session_id=decision.parameters.get('session_id', None),
-            session_action=decision.parameters.get('session_action', 'new'),
-            data={
-                'agent_name': agent_name,
-                'query': query,
-                'decision': {
+            payload=AgentRequestPayload(
+                agent_name=agent_name,
+                query=query,
+                context={},
+                decision={
                     'selected_agent': decision.selected_agent,
                     'confidence': decision.confidence,
                     'reasoning': decision.reasoning,
                     'parameters': decision.parameters
                 }
-            }
+            ),
+            msg_id=msg_id,
+            session_id=decision.parameters.get('session_id', None),
+            session_action=decision.parameters.get('session_action', 'new')
         )
         
         self._controller.publish_event(dispatch_event)

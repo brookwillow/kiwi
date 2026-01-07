@@ -7,7 +7,7 @@ from typing import Optional, Dict, Any
 import numpy as np
 
 from src.core.interfaces import IWakewordModule
-from src.core.events import Event, EventType, WakewordEvent
+from src.core.events import Event, EventType, WakewordEvent, WakewordPayload
 from src.wakeword import WakeWordFactory, WakeWordConfig, WakeWordResult, WakeWordState
 from src.core.message_tracker import get_message_tracker
 
@@ -100,7 +100,7 @@ class WakewordModuleAdapter(IWakewordModule):
         # 处理音频帧事件 - 只在IDLE状态处理
         if event.type == EventType.AUDIO_FRAME_READY:
             if self._enabled and self._should_process_audio():
-                self._process_audio_frame(event.data, event.metadata.get('sample_rate', 16000))
+                self._process_audio_frame(event.payload.frame_data, event.payload.sample_rate)
         
         # 处理重置事件
         elif event.type == EventType.WAKEWORD_RESET:
@@ -226,8 +226,10 @@ class WakewordModuleAdapter(IWakewordModule):
             # 发布唤醒词检测事件（带上msg_id）
             event = WakewordEvent(
                 source=self.name,
-                keyword=result['keyword'],
-                confidence=result['confidence'],
+                payload=WakewordPayload(
+                    keyword=result['keyword'],
+                    confidence=result['confidence']
+                ),
                 msg_id=msg_id
             )
             self._controller.publish_event(event)

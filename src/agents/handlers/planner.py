@@ -67,16 +67,16 @@ class PlannerAgent(SimpleAgentBase):
         # 重置状态
         self.current_plan = []
         self.execution_history = []
+        self._current_user_request = query  # 保存原始查询供子任务使用
         
         # 阶段1: 生成任务计划
         plan_result = self._generate_plan(query, context)
         if not plan_result["success"]:
             return AgentResponse(
                 agent=self.name,
-                success=False,
+                status=AgentStatus.ERROR,
                 query=query,
-                message="抱歉，我无法为这个任务制定执行计划。",
-                data={}
+                message="抱歉，我无法为这个任务制定执行计划。"
             )
         
         self.current_plan = plan_result["tasks"]
@@ -84,6 +84,21 @@ class PlannerAgent(SimpleAgentBase):
         
         # 阶段2: 执行任务计划
         execution_result = self._execute_plan(context)
+        
+        # 如果有任务需要用户输入，返回 WAITING_INPUT
+        if execution_result.get("waiting_input"):
+            pending_task = execution_result.get("pending_task", {})
+            return AgentResponse(
+                agent=self.name,
+                status=AgentStatus.WAITING_INPUT,
+                query=query,
+                message=pending_task.get("prompt", "请提供更多信息"),
+                data={
+                    "plan": self.current_plan,
+                    "execution_history": self.execution_history,
+                    "pending_task": pending_task
+                }
+            )
         
         # 阶段3: 生成最终回复
         final_response = self._generate_final_response(query, execution_result, context)
@@ -229,19 +244,36 @@ class PlannerAgent(SimpleAgentBase):
             
             result = self._execute_single_task(task, agent_manager, context)
             
+            # 判断任务状态
+            task_status = result.get("status", "error")
+            
             # 记录执行历史
             self.execution_history.append({
                 "task_id": task_id,
                 "description": task["description"],
                 "agent": task["agent"],
-                "success": result["success"],
+                "status": task_status,
                 "response": result.get("response", ""),
                 "error": result.get("error")
             })
             
-            if result["success"]:
+            if task_status == "completed":
                 completed_tasks.add(task_id)
                 self.logger.info(f"任务{task_id}执行成功")
+            elif task_status == "waiting_input":
+                # 需要用户输入，终止执行并返回 WAITING_INPUT
+                self.logger.info(f"任务{task_id}需要用户补充信息")
+                return {
+                    "all_success": False,
+                    "waiting_input": True,
+                    "completed_count": len(completed_tasks),
+                    "total_count": len(self.current_plan),
+                    "pending_task": {
+                        "task_id": task_id,
+                        "description": task["description"],
+                        "prompt": result.get("response")
+                    }
+                }
             else:
                 all_success = False
                 self.logger.error(f"任务{task_id}执行失败: {result.get('error')}")
@@ -269,13 +301,57 @@ class PlannerAgent(SimpleAgentBase):
         task_description = task["description"]
         
         try:
-            # 直接调用agent_manager的execute_agent方法
-            result = agent_manager.execute_agent(agent_name, task_description, context)
+            # 构建增强的上下文，包含：
+            # 1. 原始用户查询（用于提取槽位信息）
+            # 2. 已执行任务的历史（依赖任务的结果）
+            # 3. 当前任务描述
+            enhanced_context = context.copy() if context else {}
+            
+            # 添加原始查询到上下文（如果存在）
+            if 'original_query' not in enhanced_context and hasattr(self, '_current_user_request'):
+                enhanced_context['original_query'] = self._current_user_request
+            
+            # 添加已完成任务的执行历史
+            enhanced_context['execution_history'] = self.execution_history.copy()
+            
+            # 添加当前任务信息
+            enhanced_context['current_task'] = {
+                'task_id': task['task_id'],
+                'description': task_description,
+                'depends_on': task.get('depends_on', [])
+            }
+            
+            # 构建完整的查询文本，包含任务描述和上下文提示
+            # 这样子agent的LLM可以从原始查询中提取槽位信息
+            full_query = task_description
+            if 'original_query' in enhanced_context:
+                full_query = f"{task_description}\n\n[原始用户需求]: {enhanced_context['original_query']}"
+            
+            # 如果有依赖任务的结果，也添加到查询中
+            if task.get('depends_on'):
+                dependent_results = []
+                for dep_id in task['depends_on']:
+                    for history in self.execution_history:
+                        # 判断任务是否成功完成
+                        if history['task_id'] == dep_id and history['status'] == 'completed':
+                            dependent_results.append(f"- {history['description']}: {history['response']}")
+                
+                if dependent_results:
+                    full_query += "\n\n[相关任务结果]:\n" + "\n".join(dependent_results)
+            
+            # 调用agent_manager执行任务
+            result = agent_manager.execute_agent(agent_name, full_query, enhanced_context)
+            
+            # 判断执行状态：
+            # - COMPLETED: 任务完成
+            # - WAITING_INPUT: 需要用户补充信息（不是失败）
+            # - ERROR: 执行错误
+            status_value = result.status.value if hasattr(result.status, 'value') else str(result.status)
             
             return {
-                "success": result.success,
+                "status": status_value,
                 "response": result.message,
-                "error": None if result.success else "执行失败"
+                "error": None if result.status == AgentStatus.COMPLETED else None
             }
             
         except Exception as e:
@@ -336,8 +412,9 @@ class PlannerAgent(SimpleAgentBase):
         # 构建执行摘要
         summary_parts = []
         for record in self.execution_history:
-            status = "✓" if record["success"] else "✗"
-            summary_parts.append(f"{status} {record['description']}: {record['response']}")
+            # 判断任务是否成功完成
+            status_icon = "✓" if record['status'] == 'completed' else "✗"
+            summary_parts.append(f"{status_icon} {record['description']}: {record['response']}")
         
         execution_summary = "\n".join(summary_parts)
         

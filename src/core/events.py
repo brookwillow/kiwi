@@ -2,14 +2,199 @@
 核心事件系统
 
 定义系统中各模块间通信的事件类型
+使用强类型 Payload 确保模块间协议清晰
 """
 from enum import Enum
-from dataclasses import dataclass
-from typing import Any, Optional, Protocol
-import time
 from dataclasses import dataclass, field
-from typing import Optional, Dict, List, Any
-from enum import Enum
+from typing import Any, Optional, Protocol, Dict, List
+import time
+
+
+# ============================================================================
+# 基础枚举定义
+# ============================================================================
+
+class SessionAction(str, Enum):
+    """会话操作类型"""
+    NEW = "new"           # 新建会话
+    RESUME = "resume"     # 恢复会话
+    COMPLETE = "complete" # 完成会话
+
+
+# ============================================================================
+# Payload 类定义 - 定义各事件的数据结构
+# ============================================================================
+
+@dataclass
+class AudioFramePayload:
+    """音频帧载荷"""
+    frame_data: bytes
+    sample_rate: int
+    channels: int = 1
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'frame_data': self.frame_data,
+            'sample_rate': self.sample_rate,
+            'channels': self.channels,
+            'frame_size': len(self.frame_data)
+        }
+
+
+@dataclass
+class WakewordPayload:
+    """唤醒词载荷"""
+    keyword: str
+    confidence: float
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'keyword': self.keyword,
+            'confidence': self.confidence
+        }
+
+
+@dataclass
+class VADPayload:
+    """VAD事件载荷"""
+    audio_data: Optional[bytes] = None
+    duration_ms: float = 0.0
+    is_speech: bool = False
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'audio_data': self.audio_data,
+            'duration_ms': self.duration_ms,
+            'is_speech': self.is_speech,
+            'has_audio': self.audio_data is not None
+        }
+
+
+@dataclass
+class ASRPayload:
+    """ASR识别载荷"""
+    text: str
+    confidence: float = 0.0
+    is_partial: bool = False
+    latency_ms: Optional[float] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        result = {
+            'text': self.text,
+            'confidence': self.confidence,
+            'is_partial': self.is_partial
+        }
+        if self.latency_ms is not None:
+            result['latency_ms'] = self.latency_ms
+        return result
+
+
+@dataclass
+class StateChangePayload:
+    """状态变化载荷"""
+    from_state: str
+    to_state: str
+    reason: str = ""
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'from_state': self.from_state,
+            'to_state': self.to_state,
+            'reason': self.reason
+        }
+
+
+@dataclass
+class AgentRequestPayload:
+    """Agent请求载荷"""
+    agent_name: str
+    query: str
+    context: Dict[str, Any] = field(default_factory=dict)
+    decision: Optional[Dict[str, Any]] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'agent_name': self.agent_name,
+            'query': self.query,
+            'context': self.context,
+            'decision': self.decision
+        }
+
+
+@dataclass
+class SessionInfo:
+    """会话信息"""
+    session_id: str
+    session_action: SessionAction = SessionAction.NEW
+    priority: Optional[int] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        result = {
+            'session_id': self.session_id,
+            'session_action': self.session_action.value
+        }
+        if self.priority is not None:
+            result['priority'] = self.priority
+        return result
+
+
+class AgentStatus(str, Enum):
+    """Agent响应状态"""
+    WAITING_INPUT = "waiting_input"  # 等待用户输入（会话Agent）
+    COMPLETED = "completed"          # 会话完成（会话Agent）
+    ERROR = "error"                  # 执行出错
+
+
+@dataclass
+class AgentResponsePayload:
+    """
+    Agent响应载荷
+    
+    包含Agent执行结果的业务数据：
+    - agent: Agent名称
+    - query: 原始查询
+    - message: 响应消息（面向用户的文本，包括完成消息或等待输入提示）
+    - status: 响应状态（WAITING_INPUT/COMPLETED/ERROR）
+    - data: 额外的业务数据（可选）
+    """
+    agent: str                          # Agent名称
+    query: str                          # 原始查询
+    message: str                        # 响应消息
+    status: AgentStatus                 # 状态
+    data: Optional[Dict[str, Any]] = None  # 额外的业务数据
+    
+    def to_dict(self) -> Dict[str, Any]:
+        result = {
+            'agent': self.agent,
+            'query': self.query,
+            'message': self.message,
+            'status': self.status.value,
+        }
+        if self.data is not None:
+            result['data'] = self.data
+        return result
+    
+    @property
+    def success(self) -> bool:
+        """判断是否成功"""
+        return self.status == AgentStatus.COMPLETED
+    
+    def is_waiting_input(self) -> bool:
+        """判断是否等待用户输入"""
+        return self.status == AgentStatus.WAITING_INPUT
+    
+    def is_completed(self) -> bool:
+        """判断是否完成"""
+        return self.status == AgentStatus.COMPLETED
+    
+    def is_error(self) -> bool:
+        """判断是否有错误"""
+        return self.status == AgentStatus.ERROR
+
+
+# ============================================================================
+# 事件类型枚举
+# ============================================================================
 
 
 class EventType(Enum):
@@ -33,8 +218,6 @@ class EventType(Enum):
     # === VAD事件 ===
     VAD_SPEECH_START = "vad_speech_start"       # 语音开始
     VAD_SPEECH_END = "vad_speech_end"          # 语音结束
-    VAD_SPEAKING = "vad_speaking"              # 正在说话
-    VAD_SILENCE = "vad_silence"                # 静音
     
     # === ASR事件 ===
     ASR_RECOGNITION_START = "asr_recognition_start"    # 开始识别
@@ -64,288 +247,152 @@ class EventType(Enum):
 
 @dataclass
 class Event:
-    """事件基类"""
+    """
+    事件基类 - 只包含所有事件共有的字段
+    
+    字段说明：
+    - type: 事件类型
+    - source: 事件源（模块名）
+    - timestamp: 事件时间戳
+    - payload: 事件载荷（强类型 Payload 对象，包含该事件的所有业务数据）
+    """
     type: EventType                 # 事件类型
     source: str                     # 事件源（模块名）
     timestamp: float                # 时间戳
-    data: Optional[Any] = None      # 事件数据
-    metadata: Optional[dict] = None  # 元数据
-    msg_id: Optional[str] = None    # 消息追踪ID（用于追踪整个对话流程）
-    session_id: Optional[str] = None  # 会话ID（用于多轮对话）
+    payload: Optional[Any] = None   # 事件载荷（强类型 Payload 对象）
     
     @classmethod
-    def create(cls, event_type: EventType, source: str, data: Any = None, msg_id: Optional[str] = None, **metadata):
+    def create(cls, event_type: EventType, source: str, payload: Any = None):
         """创建事件"""
         return cls(
             type=event_type,
             source=source,
             timestamp=time.time(),
-            data=data,
-            metadata=metadata or {},
-            msg_id=msg_id
+            payload=payload
         )
     
     def __repr__(self):
-        msg_id_str = f", msg_id={self.msg_id[:12]}..." if self.msg_id else ""
-        return f"Event(type={self.type.value}, source={self.source}, timestamp={self.timestamp:.3f}{msg_id_str})"
+        return f"Event(type={self.type.value}, source={self.source}, timestamp={self.timestamp:.3f})"
 
 
 @dataclass
+class ConversationEvent(Event):
+    """
+    对话事件基类 - 用于处理需要对话上下文的事件
+    
+    对话追踪字段说明：
+    - msg_id: 消息追踪ID，用于跨模块链路追踪（生命周期：一次完整的请求处理流程）【必选】
+    - session_id: 会话ID，用于多轮对话会话管理（生命周期：整个对话会话，可能跨多次请求）
+    - session_action: 会话操作类型（NEW: 新建会话, RESUME: 恢复会话, COMPLETE: 完成会话）
+    
+    注意：msg_id 有默认值是为了满足 dataclass 继承规则，但在实际使用中必须提供有效值
+    """
+    msg_id: str = ""                             # 消息追踪ID（链路追踪）【必选】
+    session_id: Optional[str] = None             # 会话ID（会话管理）
+    session_action: Optional[SessionAction] = None  # 会话操作类型
+    
+    def get_session_info(self) -> Optional[SessionInfo]:
+        """获取会话信息"""
+        if self.session_id:
+            return SessionInfo(
+                session_id=self.session_id,
+                session_action=self.session_action or SessionAction.NEW
+            )
+        return None
+
+
 class AudioFrameEvent(Event):
     """音频帧事件"""
-    def __init__(self, source: str, frame_data: Any, sample_rate: int, msg_id: Optional[str] = None):
+    
+    def __init__(self, source: str, payload: AudioFramePayload):
         super().__init__(
             type=EventType.AUDIO_FRAME_READY,
             source=source,
             timestamp=time.time(),
-            data=frame_data,
-            metadata={'sample_rate': sample_rate},
-            msg_id=msg_id
+            payload=payload
         )
 
 
-@dataclass
-class WakewordEvent(Event):
-    """唤醒词事件"""
-    def __init__(self, source: str, keyword: str, confidence: float, msg_id: Optional[str] = None):
+class WakewordEvent(ConversationEvent):
+    """唤醒词事件 - 对话开始事件"""
+    
+    def __init__(self, source: str, payload: WakewordPayload, msg_id: str):
         super().__init__(
             type=EventType.WAKEWORD_DETECTED,
             source=source,
             timestamp=time.time(),
-            data={'keyword': keyword, 'confidence': confidence},
+            payload=payload,
             msg_id=msg_id
         )
 
 
-@dataclass
-class VADEvent(Event):
-    """VAD事件"""
-    def __init__(self, event_type: EventType, source: str, audio_data: Any = None, duration_ms: float = 0, msg_id: Optional[str] = None):
+class VADEvent(ConversationEvent):
+    """VAD事件 - 对话中的语音检测事件"""
+    
+    def __init__(self, event_type: EventType, source: str, payload: VADPayload, msg_id: str):
         super().__init__(
             type=event_type,
             source=source,
             timestamp=time.time(),
-            data=audio_data,
-            metadata={'duration_ms': duration_ms},
+            payload=payload,
             msg_id=msg_id
         )
 
 
-@dataclass
-class ASREvent(Event):
-    """ASR事件"""
-    def __init__(self, event_type: EventType, source: str, text: str = "", confidence: float = 0.0, latency_ms: float = 0.0, msg_id: Optional[str] = None):
-        data = {'text': text, 'confidence': confidence}
-        if latency_ms > 0:
-            data['latency_ms'] = latency_ms
-        
+class ASREvent(ConversationEvent):
+    """ASR事件 - 对话中的语音识别事件"""
+    
+    def __init__(self, event_type: EventType, source: str, payload: ASRPayload, msg_id: str):
         super().__init__(
             type=event_type,
             source=source,
             timestamp=time.time(),
-            data=data,
+            payload=payload,
             msg_id=msg_id
         )
 
 
-@dataclass
 class StateChangeEvent(Event):
     """状态变化事件"""
-    def __init__(self, source: str, from_state: str, to_state: str, reason: str = "", msg_id: Optional[str] = None):
+    
+    def __init__(self, source: str, payload: StateChangePayload):
         super().__init__(
             type=EventType.STATE_CHANGED,
             source=source,
             timestamp=time.time(),
-            data={'from_state': from_state, 'to_state': to_state, 'reason': reason},
-            msg_id=msg_id
+            payload=payload
         )
 
 
 
-@dataclass
-class AgentRequestEvent(Event):
+class AgentRequestEvent(ConversationEvent):
+    """Agent请求事件 - 对话相关事件"""
     
-    """Agent请求事件"""
-    def __init__(self, source: str, query: str, context: Dict[str, Any], data: Any = None, msg_id: Optional[str] = None, session_id: Optional[str] = None, session_action: str = 'new'):
-        self.session_action = session_action  # 'new' 或 'resume'
+    def __init__(self, source: str, payload: AgentRequestPayload, msg_id: str,
+                 session_id: Optional[str] = None, session_action: SessionAction = SessionAction.NEW):
         super().__init__(
             type=EventType.AGENT_DISPATCH_REQUEST,
             source=source,
             timestamp=time.time(),
-            data=data,
-            msg_id=msg_id, 
-            session_id=session_id
+            payload=payload,
+            msg_id=msg_id,
+            session_id=session_id,
+            session_action=session_action
         )
 
 
-@dataclass
-class ShortTermMemory:
-    """短期记忆（对话历史）"""
-    query: str                          # 用户查询
-    response: str                       # 系统响应
-    timestamp: float                    # 时间戳
-    agent: str = ""                     # 处理该记忆的Agent名称
-    tools_used: List[str] = field(default_factory=list)  # 使用的工具列表
-    description: str = ""               # 文本化描述
-    success: bool = True                # 记忆是否成功
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class LongTermMemory:
-    """长期记忆（用户画像和总结）"""
-    summary: str                       # 对话摘要
-    user_profile: Dict[str, Any]       # 用户画像
-    preferences: Dict[str, Any]        # 用户偏好
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-
-class QueryType(Enum):
-    """查询类型"""
-    USER_QUERY = "user_query"          # 用户语音查询
-    SYSTEM_EVENT = "system_event"      # 系统事件
-
-@dataclass
-class SystemState:
-    """系统状态"""
-    state_type: str                    # 状态类型（vehicle/music/navigation等）
-    state_data: Dict[str, Any]         # 状态数据
-    timestamp: float                   # 时间戳
-
-
-@dataclass
-class AgentInfo:
-    """Agent信息"""
-    name: str                          # Agent名称
-    description: str                   # Agent描述
-    capabilities: List[str]            # Agent能力列表
-    priority: int                       # 优先级
-    enabled: bool = True               # 是否启用
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class OrchestratorInput:
-    """Orchestrator输入"""
-    query_type: QueryType              # 查询类型
-    query_content: str                 # 查询内容
-    timestamp: float                   # 时间戳
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class OrchestratorContext:
-    """Orchestrator上下文"""
-    input_query: OrchestratorInput     # 输入查询
-    short_term_memories: List[ShortTermMemory]  # 短期记忆
-    long_term_memory: Optional[LongTermMemory]  # 长期记忆
-    system_states: List[SystemState]   # 系统状态
-    available_agents: List[AgentInfo]  # 可用的Agents
+class AgentResponseEvent(ConversationEvent):
+    """Agent响应事件 - 对话相关事件"""
     
-    
-@dataclass
-class OrchestratorDecision:
-    """Orchestrator决策结果"""
-    selected_agent: str                # 选中的Agent名称
-    confidence: float                  # 置信度
-    reasoning: str                     # 决策理由
-    parameters: Dict[str, Any] = field(default_factory=dict)  # 传递给Agent的参数
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    def __init__(self, source: str, payload: AgentResponsePayload, msg_id: str):
+        super().__init__(
+            type=EventType.AGENT_RESPONSE,
+            source=source,
+            timestamp=time.time(),
+            payload=payload,
+            msg_id=msg_id
+        )
 
 
-@dataclass
-class AgentContext:
-    """Agent上下文"""
-    recent_memories: List[ShortTermMemory]  # 最近的短期记忆（按时间顺序）
-    related_memories: List[ShortTermMemory]  # 相关的短期记忆（按语义相似度）
-    long_term_memory: Optional[LongTermMemory]  # 长期记忆
-    system_states: List[SystemState]   # 系统状态
-    data: Optional[Any]
-    
-    @property
-    def short_term_memories(self) -> List[ShortTermMemory]:
-        """向后兼容：返回所有短期记忆（最近+相关，去重）"""
-        seen = set()
-        merged = []
-        for mem in self.recent_memories:
-            if mem.timestamp not in seen:
-                merged.append(mem)
-                seen.add(mem.timestamp)
-        for mem in self.related_memories:
-            if mem.timestamp not in seen:
-                merged.append(mem)
-                seen.add(mem.timestamp)
-        return merged
-    
-@dataclass
-class AgentStatus(str, Enum):
-    """Agent响应状态"""
-    WAITING_INPUT = "waiting_input"  # 等待用户输入（会话Agent）
-    COMPLETED = "completed"          # 会话完成（会话Agent）
-    ERROR = "error"                  # 执行出错
-
-@dataclass
-class AgentResponse:
-    """
-    统一的Agent响应类
-    """
-    # 必选字段
-    agent: str                          # Agent名称
-    query: str                          # 原始查询
-    message: str                        # 响应消息（面向用户的文本）
-    status: AgentStatus                 # 状态（必选枚举）
-
-    
-    # 会话管理字段
-    session_id: Optional[str] = None    # 会话ID
-    prompt: Optional[str] = None        # 等待输入时的提示（status=waiting_input时必填）
-    
-    data: Dict[str, Any] = field(default_factory=dict)  # 结构化数据
-
-    @property
-    def success(self) -> bool:
-        """判断是否成功"""
-        return self.status in (AgentStatus.COMPLETED)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """转换为字典"""
-        return {
-            'agent': self.agent,
-            'message': self.message,
-            'status': self.status.value,
-            'success': self.success,
-            'query': self.query,
-            'data': self.data,
-            'session_id': self.session_id,
-            'prompt': self.prompt,
-        }
-    
-    def is_session_response(self) -> bool:
-        """判断是否为会话响应"""
-        return self.session_id is not None
-    
-    def is_waiting_input(self) -> bool:
-        """判断是否等待用户输入"""
-        return self.status == AgentStatus.WAITING_INPUT
-    
-    def is_completed(self) -> bool:
-        """判断是否完成"""
-        return self.status in (AgentStatus.COMPLETED)
-    
-    def is_error(self) -> bool:
-        """判断是否有错误"""
-        return self.status == AgentStatus.ERROR
-
-@dataclass
-class IAgent(Protocol):
-    """
-    Agent协议接口
-    所有Agent都应该遵循这个协议
-    """
-    name: str
-    description: str
-    capabilities: list[str]
-    
-    def can_handle(self, query: str) -> bool:
-        """判断是否能处理该查询"""
-        ...
+# 向后兼容：AgentResponse 作为 AgentResponsePayload 的别名
+AgentResponse = AgentResponsePayload

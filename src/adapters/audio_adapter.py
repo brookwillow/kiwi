@@ -110,7 +110,7 @@ class AudioModuleAdapter(IAudioModule):
             self.stop()
         elif event.type == EventType.AUDIO_DEVICE_CHANGED:
             # 处理设备切换
-            device_id = event.data.get('device_id') if event.data else None
+            device_id = event.payload.get('device_id') if event.payload else None
             if device_id is not None:
                 self.set_device(device_id)
     
@@ -158,13 +158,25 @@ class AudioModuleAdapter(IAudioModule):
         Args:
             frame: 音频帧
         """
+        from src.core.events import AudioFrameEvent, AudioFramePayload
+        
         self._frames_processed += 1
         
-        # 将音频帧发布为事件
-        # 注意：这里直接调用控制器的方法，而不是发布事件
-        # 因为音频帧太频繁，发布事件会有性能开销
+        # 直接发布音频帧事件（符合事件驱动架构）
         if self._controller:
-            self._controller.on_audio_frame(frame.data, self._config.sample_rate)
+            event = AudioFrameEvent(
+                source=self.name,
+                payload=AudioFramePayload(
+                    frame_data=frame.data,
+                    sample_rate=self._config.sample_rate,
+                    channels=1
+                )
+            )
+            self._controller.publish_event(event)
+            
+            # 定期检查超时
+            if self._frames_processed % 10 == 0:  # 每10帧检查一次
+                self._controller.check_timeout()
         
         # 如果有额外的回调，也调用它
         if self._frame_callback:

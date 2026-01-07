@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Dict, Type
 
-from src.core.events import IAgent
+from src.core.types import IAgent
 from src.agents.handlers.music import MusicAgent
 from src.agents.handlers.navigation import NavigationAgent
 from src.agents.handlers.vehicle import VehicleControlAgent
@@ -27,9 +27,10 @@ class GenericAgent:
 
     def handle(self, query: str, context=None):
         from src.agents.base_classes import AgentResponse
+        from src.core.events import AgentStatus
 
         message = f"{self.description} 已收到: {query}"
-        return AgentResponse(agent=self.name, success=True, message=message, data={})
+        return AgentResponse(agent=self.name, status=AgentStatus.COMPLETED, query=query, message=message)
 
 
 def get_agent_class(name: str):

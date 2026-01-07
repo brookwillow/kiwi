@@ -8,7 +8,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, Optional
 from src.core.session_manager import get_session_manager, AgentSession
-from src.core.events import AgentResponse, AgentStatus,AgentContext
+from src.core.events import AgentResponse, AgentStatus
+from src.core.types import AgentContext
 from src.execution.tool_registry import ToolCategory
 from src.execution.manager import get_execution_manager
 from openai import OpenAI
@@ -219,8 +220,7 @@ class ToolAgentBase(SimpleAgentBase):
                 agent=self.name,
                 status=AgentStatus.ERROR,
                 query=query,
-                message="未配置API密钥，无法使用智能工具调用",
-                data={}
+                message="未配置API密钥，无法使用智能工具调用"
             )
         
         try:
@@ -277,8 +277,7 @@ class ToolAgentBase(SimpleAgentBase):
                         agent=self.name,
                         status=AgentStatus.WAITING_INPUT,
                         query=query,
-                        message=parsed_response["message"],
-                        prompt=parsed_response["message"]
+                        message=parsed_response["message"]
                     )
                 else:
                     # 任务完成或可以直接回答
@@ -287,7 +286,7 @@ class ToolAgentBase(SimpleAgentBase):
                         agent=self.name,
                         status=AgentStatus.COMPLETED,
                         query=query,
-                        message=parsed_response["message"],
+                        message=parsed_response["message"]
                     )
         
         except Exception as e:

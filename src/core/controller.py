@@ -363,12 +363,14 @@ class SystemController:
         
         if result.success:
             # 发布状态变化事件
-            from .events import StateChangeEvent
+            from .events import StateChangeEvent, StateChangePayload
             event = StateChangeEvent(
                 source="state_machine",
-                from_state=result.previous_state.value,
-                to_state=result.current_state.value,
-                reason=result.message
+                payload=StateChangePayload(
+                    from_state=result.previous_state.value,
+                    to_state=result.current_state.value,
+                    reason=result.message
+                )
             )
             self.publish_event(event)
             
@@ -425,24 +427,6 @@ class SystemController:
         print("="*60 + "\n")
     
     # ==================== 工作流协调 ====================
-    
-    def on_audio_frame(self, frame_data: Any, sample_rate: int):
-        """
-        处理音频帧（由音频模块调用）
-        
-        Args:
-            frame_data: 音频数据
-            sample_rate: 采样率
-        """
-        from .events import AudioFrameEvent
-        
-        # 发布音频帧事件
-        event = AudioFrameEvent("audio", frame_data, sample_rate)
-        self.publish_event(event)
-        
-        # 定期检查超时
-        if self._stats['events_processed'] % 10 == 0:  # 每10帧检查一次
-            self.check_timeout()
     
     @property
     def is_running(self) -> bool:

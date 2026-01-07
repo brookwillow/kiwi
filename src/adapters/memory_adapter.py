@@ -1,5 +1,6 @@
 from src.core.interfaces import IMemoryModule
-from src.core.events import Event, EventType, LongTermMemory
+from src.core.events import Event, EventType, AgentStatus
+from src.core.types import LongTermMemory
 from src.memory.memory import MemoryManager
 from src.config_manager import get_config
 
@@ -80,18 +81,22 @@ class MemoryModuleAdapter(IMemoryModule):
         """根据事件添加短期记忆条目"""
         print(f"✅ [memory] 处理事件: {event.type.value}")
 
-        update_type = event.data.get('type', '')
+        # GUI_UPDATE_TEXT 事件使用 payload 传递数据
+        if not event.payload or not isinstance(event.payload, dict):
+            return
+        
+        update_type = event.payload.get('type', '')
         
         if update_type == 'agent_response':
             # 构建记忆数据字典
             memory_data = {
-                'agent': event.data.get('agent', ''),
-                'query': event.data.get('query', ''),
-                'response': event.data.get('message', ''),
+                'agent': event.payload.get('agent', ''),
+                'query': event.payload.get('query', ''),
+                'response': event.payload.get('message', ''),
                 'timestamp': event.timestamp,
-                'success': event.data.get('success', False),
-                'tools_used': event.data.get('tools_used', []),
-                'data': event.data.get('data', {})
+                'status': event.payload.get('status', AgentStatus.ERROR).value,  # 使用 status 字段
+                'tools_used': event.payload.get('tools_used', []),
+                'data': event.payload.get('data', {})
             }
             self._memory_manager.add_short_term_memory(memory_data)
           

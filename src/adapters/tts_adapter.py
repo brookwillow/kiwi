@@ -108,7 +108,7 @@ class TTSModuleAdapter(IModule):
             print(f"🔇 [TTS] 评估模式 - 跳过播报")
             return
         
-        text = event.data.get('text', '')
+        text = event.payload.get('text', '') if event.payload else ''
         if not text:
             return
         
@@ -161,7 +161,7 @@ class TTSModuleAdapter(IModule):
         event = Event.create(
             event_type=EventType.TTS_SPEAK_START,
             source=self._name,
-            data={'text': text}
+            payload={'text': text}
         )
         self._controller.publish_event(event)
         print(f"🔊 [TTS] 开始播报: {text}")
@@ -171,7 +171,7 @@ class TTSModuleAdapter(IModule):
         event = Event.create(
             event_type=EventType.TTS_SPEAK_END,
             source=self._name,
-            data={'text': text}
+            payload={'text': text}
         )
         self._controller.publish_event(event)
         print(f"✅ [TTS] 播报完成: {text}")
@@ -181,7 +181,7 @@ class TTSModuleAdapter(IModule):
         event = Event.create(
             event_type=EventType.TTS_SPEAK_ERROR,
             source=self._name,
-            data={'text': text, 'error': error}
+            payload={'text': text, 'error': error}
         )
         self._controller.publish_event(event)
     

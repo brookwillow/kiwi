@@ -503,16 +503,19 @@ class KiwiVoiceAssistantGUI(QWidget):
                 )
                 tracker.update_query(msg_id, text)
                 
-                # 创建合成ASR事件（带上msg_id）
-                event = Event.create(
+                # 创建 ASR 识别成功事件（使用新的 Payload 模式）
+                from src.core.events import ASREvent, ASRPayload
+                
+                event = ASREvent(
                     event_type=EventType.ASR_RECOGNITION_SUCCESS,
                     source="gui_test",
-                    msg_id=msg_id,
-                    data={
-                        'text': text,
-                        'confidence': 1.0,
-                        'latency_ms': 0
-                    }
+                    payload=ASRPayload(
+                        text=text,
+                        confidence=1.0,
+                        is_partial=False,
+                        latency_ms=0.0
+                    ),
+                    msg_id=msg_id
                 )
                 
                 # 发布事件到系统（这会触发orchestrator → agent → TTS的处理链）

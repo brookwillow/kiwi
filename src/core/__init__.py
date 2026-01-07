@@ -5,7 +5,7 @@
 """
 
 from .controller import SystemController
-from .events import Event, EventType
+from .events import Event, EventType, ConversationEvent
 from .events import (
     AudioFrameEvent, WakewordEvent, VADEvent, 
     ASREvent, StateChangeEvent
@@ -22,6 +22,7 @@ __all__ = [
     # 事件系统
     'Event',
     'EventType',
+    'ConversationEvent',
     'AudioFrameEvent',
     'WakewordEvent',
     'VADEvent',

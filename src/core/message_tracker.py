@@ -6,11 +6,25 @@
 import uuid
 import time
 import json
+import numpy as np
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field, asdict
 from threading import Lock
 from datetime import datetime
 from pathlib import Path
+
+
+def _convert_to_json_serializable(obj):
+    """将对象转换为 JSON 可序列化的类型"""
+    if isinstance(obj, (np.integer, np.floating)):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, dict):
+        return {k: _convert_to_json_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [_convert_to_json_serializable(item) for item in obj]
+    return obj
 
 
 @dataclass
@@ -25,7 +39,9 @@ class ModuleTrace:
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
-        return asdict(self)
+        result = asdict(self)
+        # 转换 numpy 类型为 Python 原生类型
+        return _convert_to_json_serializable(result)
 
 
 @dataclass
@@ -78,7 +94,8 @@ class MessageTrace:
         }
         if self.end_time:
             result['end_time_str'] = datetime.fromtimestamp(self.end_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        return result
+        # 转换 numpy 类型为 Python 原生类型
+        return _convert_to_json_serializable(result)
 
 
 class MessageTracker:
