@@ -1,0 +1,62 @@
+# LLM统一管理配置文件
+
+llm:
+  # ========== 模型定义 ==========
+  # 定义所有可用的模型及其来源
+  models:
+    # 阿里云通义千问系列
+    qwen-plus:
+      provider: dashscope
+      model_name: qwen-plus
+      description: "通义千问Plus - 强推理能力"
+      
+    qwen-turbo:
+      provider: dashscope
+      model_name: qwen-turbo
+      description: "通义千问Turbo - 快速响应"
+      
+    qwen-max:
+      provider: dashscope
+      model_name: qwen-max
+      description: "通义千问Max - 最强能力"
+    
+    # Ollama本地模型系列
+    qwen3-8b:
+      provider: ollama
+      model_name: "${OLLAMA_MODEL:qwen3:8b}"
+      description: "本地Qwen3 8B - 快速闲聊"
+    
+    # Embedding模型
+    bge-m3:
+      provider: ollama
+      model_name: "bge-m3:latest"
+      type: embedding
+      description: "BGE-M3向量化模型"
+  
+  # ========== Provider配置 ==========
+  # 各Provider的连接和认证信息
+  providers:
+    dashscope:
+      api_key: "${DASHSCOPE_API_KEY}"
+      base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+      timeout: 30
+      max_retries: 3
+      
+    ollama:
+      base_url: "${OLLAMA_URL:http://localhost:11434}"
+      timeout: 60
+  
+  # ========== 降级策略 ==========
+  fallback:
+    enabled: true  # 重新启用降级
+    # 模型级别的降级映射
+    model_fallback:
+      qwen-plus: "qwen3-8b"      # qwen-plus失败时降级到本地qwen3-8b
+      qwen-max: "qwen-plus"      # qwen-max失败时降级到qwen-plus
+      qwen3-14b: "qwen3-8b"      # qwen3-14b失败时降级到qwen3-8b
+  
+  # ========== 日志配置 ==========
+  logging:
+    level: "INFO"  # 恢复INFO级别
+    log_requests: false
+    log_responses: false

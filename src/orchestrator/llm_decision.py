@@ -1,28 +1,26 @@
 """
-LLM决策器 - 基于阿里百炼平台
+LLM决策器 - 使用统一LLM管理
 负责调用大模型进行Agent选择决策
 """
 import json
 from typing import Dict, Any, Optional
-from openai import OpenAI
+from src.llm import get_llm_manager, LLMError
 from src.core.types import OrchestratorContext, OrchestratorDecision
 
 class LLMDecisionMaker:
-    """LLM决策器"""
+    """LLM决策器 - 使用统一LLM Manager"""
     
-    def __init__(self, api_key: str, base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"):
+    def __init__(self, api_key: str = None, base_url: str = None):
         """
         初始化LLM决策器
         
         Args:
-            api_key: API密钥
-            base_url: API基础URL
+            api_key: API密钥（已废弃，保留兼容性）
+            base_url: API基础URL（已废弃，保留兼容性）
         """
-        self.client = OpenAI(
-            api_key=api_key,
-            base_url=base_url
-        )
-        self.model = "qwen-plus"  # 使用通义千问Plus模型
+        # 使用统一的LLM Manager
+        self.llm_manager = get_llm_manager()
+        self.model = None  # 使用配置中的默认模型
     
     def build_prompt(self, context: OrchestratorContext) -> str:
         """
@@ -125,9 +123,8 @@ class LLMDecisionMaker:
             print("🚀 调用LLM进行决策...")
             print(f"Prompt:\n{prompt}\n")
             
-            # 调用大模型
-            completion = self.client.chat.completions.create(
-                model=self.model,
+            # 使用统一的LLM Manager调用
+            response = self.llm_manager.chat(
                 messages=[
                     {
                         "role": "system",
@@ -138,12 +135,12 @@ class LLMDecisionMaker:
                         "content": prompt
                     }
                 ],
-                temperature=0.3,  # 降低温度，使输出更确定
-                response_format={"type": "json_object"}  # 强制JSON输出
+                model="qwen-plus",  # 决策编排使用qwen-plus
+                temperature=0.3
             )
             
             # 解析响应
-            response_text = completion.choices[0].message.content
+            response_text = response.content
             decision_data = json.loads(response_text)
             
             # 构建决策结果
@@ -153,14 +150,15 @@ class LLMDecisionMaker:
                 reasoning=decision_data.get("reasoning", ""),
                 parameters=decision_data.get("parameters", {}),
                 metadata={
-                    "model": self.model,
-                    "tokens_used": completion.usage.total_tokens if completion.usage else 0
+                    "model": response.model,
+                    "provider": response.provider,
+                    "tokens_used": response.usage.total_tokens
                 }
             )
             
             return decision
             
-        except Exception as e:
+        except LLMError as e:
             print(f"❌ LLM决策失败: {e}")
             # 返回默认决策
             return OrchestratorDecision(

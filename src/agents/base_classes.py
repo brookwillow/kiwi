@@ -12,11 +12,12 @@ from src.core.events import AgentResponse, AgentStatus
 from src.core.types import AgentContext
 from src.execution.tool_registry import ToolCategory
 from src.execution.manager import get_execution_manager
-from openai import OpenAI
+from src.llm import get_llm_manager, LLMError
 import asyncio
 import json
 from typing import List
 import os
+
 
 
 # ============================================================================
@@ -126,16 +127,16 @@ class ToolAgentBase(SimpleAgentBase):
         tool_categories: List[ToolCategory],
         priority: int = 2,
         api_key: Optional[str] = None,
-        base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        base_url: str = None  # 保留兼容性，实际不再使用
     ):
         # 调用父类初始化
         super().__init__(name, description, capabilities, priority)
         
         self.tool_categories = tool_categories
         
-        # 初始化LLM客户端
-        self.api_key = api_key or os.getenv("DASHSCOPE_API_KEY")
-        self.client = OpenAI(api_key=self.api_key, base_url=base_url) if self.api_key else None
+        # 使用统一的LLM Manager
+        self.llm_manager = get_llm_manager()
+        # 工具调用Agent默认使用qwen-plus（支持function calling）
         self.model = "qwen-plus"
         
         # 初始化执行管理器（统一对外接口，必须用单例）
@@ -146,14 +147,8 @@ class ToolAgentBase(SimpleAgentBase):
 
     @property
     def llm_client(self):
-        """延迟初始化LLM客户端"""
-        if self._llm_client is None and self.api_key:
-            from openai import OpenAI
-            self._llm_client = OpenAI(
-                api_key=self.api_key,
-                base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
-            )
-        return self._llm_client
+        """兼容旧代码的属性（实际使用llm_manager）"""
+        return self.llm_manager
     
 
     
@@ -215,12 +210,12 @@ class ToolAgentBase(SimpleAgentBase):
         """
         处理用户查询的异步实现
         """
-        if not self.client:
+        if not self.llm_manager:
             return AgentResponse(
                 agent=self.name,
                 status=AgentStatus.ERROR,
                 query=query,
-                message="未配置API密钥，无法使用智能工具调用"
+                message="LLM Manager未初始化"
             )
         
         try:
@@ -235,37 +230,57 @@ class ToolAgentBase(SimpleAgentBase):
 
             print(f"可用工具: {[tool['function']['name'] for tool in self.available_tools]}")
             
-            # 调用LLM（支持function calling）
-            response = self.client.chat.completions.create(
-                model=self.model,
+            # 使用统一的LLM Manager调用（支持function calling）
+            response = self.llm_manager.chat(
                 messages=messages,
+                model=self.model,
                 tools=self.available_tools if self.available_tools else None,
                 tool_choice="auto" if self.available_tools else None
             )
             
-            message = response.choices[0].message
+            # 注意：LLMResponse格式不同，需要适配
+            # 检查是否有工具调用
+            has_tool_calls = response.has_tool_calls
 
-            print(f"选择的工具调用: {message.tool_calls}" if message.tool_calls else "没有选择工具调用")
+            print(f"选择的工具调用: {response.tool_calls}" if has_tool_calls else "没有选择工具调用")
             
             # 处理工具调用
-            if message.tool_calls:
-                return await self._handle_tool_calls(query, message, messages, context)
+            if has_tool_calls:
+                return await self._handle_tool_calls_from_response(query, response, messages, context)
             else:
-                # 没有工具调用，LLM直接回复（必须是JSON格式）
-                response_content = message.content or "{\"need_input\": false, \"message\": \"好的\"}"
+                # 没有工具调用，LLM直接回复
+                response_content = response.content
                 
-                # 解析JSON响应（强制要求JSON格式）
-                parsed_response = self._parse_json_response(response_content)
-                
-                if parsed_response is None:
-                    # JSON解析失败，返回错误
-                    print(f"❌ [{self.name}] LLM未返回有效的JSON格式: {response_content[:100]}")
+                # 检查响应内容是否为空
+                if not response_content or not response_content.strip():
+                    print(f"⚠️ [{self.name}] LLM返回空响应，可能是模型不支持当前任务")
                     return AgentResponse(
                         agent=self.name,
                         status=AgentStatus.ERROR,
                         query=query,
-                        message="抱歉，我遇到了一些问题，请稍后再试",
-                        data={"error": "invalid_json_response", "raw_response": response_content}
+                        message="抱歉，当前模型无法处理这个请求，请稍后再试",
+                        data={"error": "empty_response", "model": self.model}
+                    )
+                
+                # 尝试解析JSON响应
+                parsed_response = self._parse_json_response(response_content)
+                
+                if parsed_response is None:
+                    # JSON解析失败，但如果有文本内容，则直接返回
+                    print(f"⚠️ [{self.name}] LLM未返回JSON格式，但有文本内容，将直接使用")
+                    print(f"   原始响应: {response_content[:200]}")
+                    
+                    # 智能判断：如果内容像是在询问问题，标记为需要输入
+                    content_lower = response_content.lower()
+                    is_question = any(marker in content_lower for marker in 
+                        ['?', '？', '请问', '什么', '哪里', '怎么', '如何', '是否', '确认'])
+                    
+                    return AgentResponse(
+                        agent=self.name,
+                        status=AgentStatus.WAITING_INPUT if is_question else AgentStatus.COMPLETED,
+                        query=query,
+                        message=response_content.strip(),
+                        data={"format": "plain_text", "is_fallback": True}
                     )
                 
                 # 根据need_input判断状态
@@ -302,6 +317,27 @@ class ToolAgentBase(SimpleAgentBase):
                 data={"error": str(e)}
             )
     
+    async def _handle_tool_calls_from_response(
+        self,
+        query: str,
+        response: Any,  # LLMResponse
+        messages: List[Dict],
+        context: AgentContext = None
+    ) -> AgentResponse:
+        """
+        处理新LLMResponse格式的工具调用
+        
+        将LLMResponse适配到原有的_handle_tool_calls方法
+        """
+        # 从LLMResponse提取tool_calls并转换格式
+        # 构造一个兼容的message对象用于_handle_tool_calls
+        class MessageAdapter:
+            def __init__(self, tool_calls):
+                self.tool_calls = tool_calls
+        
+        message = MessageAdapter(response.tool_calls)
+        return await self._handle_tool_calls(query, message, messages, context)
+    
     async def _handle_tool_calls(
         self,
         query: str,
@@ -324,7 +360,7 @@ class ToolAgentBase(SimpleAgentBase):
         # 首先添加 assistant 的 tool_calls 消息（必须在所有 tool 消息之前）
         messages.append({
             "role": "assistant",
-            "content": None,
+            "content": "",
             "tool_calls": [tool_call.model_dump() for tool_call in message.tool_calls]
         })
         
@@ -367,21 +403,31 @@ class ToolAgentBase(SimpleAgentBase):
         # 让LLM根据工具结果生成最终回复
         try:
             # 添加提示，让LLM结合记忆和上下文生成回复
+            # 注意：不能在tool消息后添加system消息，这会导致API错误
+            # 将上下文提醒作为user消息添加，而不是system消息
             context_reminder = self._build_context_reminder(context)
             if context_reminder:
                 messages.append({
-                    "role": "system",
-                    "content": context_reminder
+                    "role": "user",
+                    "content": f"请根据工具执行结果，结合以下上下文信息，生成自然友好的回复：\n\n{context_reminder}"
+                })
+            else:
+                # 如果没有上下文提醒，添加一个简单的user消息让LLM总结结果
+                messages.append({
+                    "role": "user",
+                    "content": "请根据工具执行结果，用自然友好的语言总结并回复用户。"
                 })
             
-            final_response = self.client.chat.completions.create(
+            # 使用LLM Manager生成最终回复
+            final_response = self.llm_manager.chat(
+                messages=messages,
                 model=self.model,
-                messages=messages
+                enable_thinking=False  # 最终回复不需要思考过程，用户只需要看到结果
             )
 
-            print(f"生成的最终回复: {final_response.choices[0].message.content}")
+            print(f"生成的最终回复: {final_response.content}")
             
-            final_message = final_response.choices[0].message.content
+            final_message = final_response.content
             
             return AgentResponse(
                 agent=self.name,
@@ -418,32 +464,28 @@ class ToolAgentBase(SimpleAgentBase):
 你的能力：
 {chr(10).join(f"- {cap}" for cap in self.capabilities)}
 
-你可以使用以下工具来完成任务。请根据用户的需求选择合适的工具。
+# 工作流程
+1. 如果有可用工具，优先使用function calling调用工具
+2. 如果信息不足，先询问用户，获取完整信息后再调用工具
+3. 如果没有合适的工具，直接用自然语言回复用户
 
-重要提示：
-1. 仔细理解用户意图，选择最合适的工具
-2. 如果用户提供的信息不足以调用工具（如缺少必需参数），不要调用工具，而是询问缺失的信息
-3. 如果使用工具需要用户确认，也请先询问用户
-4. 如果需要多个步骤，可以依次调用多个工具
-5. 执行工具后，用自然语言总结结果给用户
-6. 保持回复简洁友好，不超过100字
-7. 如果无法完成请求，礼貌地说明原因
+# 重要规则
+- 信息充足时：直接调用工具，不要询问
+- 信息不足时：询问缺失的必需参数
+- 需要确认时：询问用户是否确认
+- 无法完成时：礼貌说明原因
 
-【重要】你必须始终以JSON格式回复（无论任何情况）：
+# 回复格式（仅在无法调用工具时使用）
+如果不使用工具，请用JSON格式回复：
 
-格式1 - 当信息充足，任务完成或可以直接回答时：
-{{"need_input": false, "message": "你的回复内容"}}
-
-格式2 - 当信息不足或者需要用户确认时，需要用户补充信息时：
-{{"need_input": true, "message": "你要询问的问题"}}
+{{"need_input": true, "message": "你的问题"}}  # 需要更多信息时
+{{"need_input": false, "message": "你的回答"}}  # 可以直接回答时
 
 示例：
-- {{"need_input": false, "message": "已经帮你设置温度为25度了"}}
 - {{"need_input": true, "message": "请问你要去哪里？"}}
-- {{"need_input": true, "message": "确认要执行吗"}}
-- {{"need_input": false, "message": "抱歉，我无法完成这个操作"}}
+- {{"need_input": false, "message": "好的，我明白了"}}
 
-注意：必须严格返回JSON格式，不要添加其他文字。
+注意：优先使用工具调用。如果无工具可用或信息不足，才返回JSON文本。
 """
         
         # 添加上下文信息

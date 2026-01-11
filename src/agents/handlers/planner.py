@@ -6,11 +6,11 @@ import json
 import os
 import logging
 from typing import Dict, Any, List, Optional
-from openai import OpenAI
 
 from src.agents.base_classes import AgentResponse,SimpleAgentBase
 from src.execution.tool_registry import ToolCategory
 from src.core.events import AgentStatus
+from src.llm import get_llm_manager
 
 
 class PlannerAgent(SimpleAgentBase):
@@ -21,13 +21,9 @@ class PlannerAgent(SimpleAgentBase):
         super().__init__(name="planner_agent", description=description,
                         capabilities=capabilities, priority=priority)
         
-        # 初始化LLM客户端
-        self.api_key = api_key or os.getenv("DASHSCOPE_API_KEY")
-        self.llm_client = OpenAI(
-            api_key=self.api_key,
-            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
-        ) if self.api_key else None
-        self.model_name = "qwen-plus"
+        # 使用统一的LLM Manager
+        self.llm_manager = get_llm_manager()
+        self.model_name = None  # 使用配置中的默认模型
         
         # 初始化logger
         self.logger = logging.getLogger(self.name)
@@ -177,13 +173,13 @@ class PlannerAgent(SimpleAgentBase):
             # 调用LLM生成计划
             messages = [{"role": "user", "content": planning_prompt}]
             
-            response = self.llm_client.chat.completions.create(
-                model=self.model_name,
+            response = self.llm_manager.chat(
                 messages=messages,
+                model="qwen-plus",  # 任务规划使用qwen-plus
                 temperature=0.7
             )
             
-            plan_text = response.choices[0].message.content.strip()
+            plan_text = response.content.strip()
             self.logger.info(f"LLM生成的计划: {plan_text}")
             
             # 解析JSON
@@ -480,13 +476,13 @@ class PlannerAgent(SimpleAgentBase):
         try:
             messages = [{"role": "user", "content": final_prompt}]
             
-            response = self.llm_client.chat.completions.create(
-                model=self.model_name,
+            response = self.llm_manager.chat(
                 messages=messages,
+                model="qwen-plus",  # 任务规划使用qwen-plus
                 temperature=0.7
             )
             
-            final_response = response.choices[0].message.content.strip()
+            final_response = response.content.strip()
             return final_response
             
         except Exception as e:
