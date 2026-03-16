@@ -15,6 +15,7 @@ openai-whisper>=20230314
 # AI 框架
 ollama>=0.6.1
 openai>=1.0.0  # For qwen function calling via DashScope API
+httpx>=0.25,<0.28  # OpenAI兼容API依赖的HTTP客户端，避免0.28+破坏proxies参数
 
 # 工具库
 pyyaml>=6.0

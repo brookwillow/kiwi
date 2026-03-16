@@ -37,7 +37,7 @@ llm:
   # 各Provider的连接和认证信息
   providers:
     dashscope:
-      api_key: "${DASHSCOPE_API_KEY}"
+      api_key: "sk-5cf1cbb39004439fafe051f929729a42"
       base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
       timeout: 30
       max_retries: 3

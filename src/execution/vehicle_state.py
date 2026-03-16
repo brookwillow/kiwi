@@ -2,7 +2,7 @@
 车辆状态管理系统
 维护车辆的所有状态信息，工具执行会实际修改这些状态
 """
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 import threading
@@ -24,6 +24,23 @@ class SeatPosition(Enum):
     PASSENGER = "passenger"
     REAR_LEFT = "rear_left"
     REAR_RIGHT = "rear_right"
+
+
+@dataclass
+class Contact:
+    """联系人"""
+    name: str
+    phone: str
+    nickname: Optional[str] = None
+
+    def matches(self, query: str) -> bool:
+        """检查是否匹配查询"""
+        query_lower = query.lower()
+        return (
+            query_lower in self.name.lower() or
+            query == self.phone or
+            (self.nickname and query_lower in self.nickname.lower())
+        )
 
 
 @dataclass
@@ -94,6 +111,14 @@ class VehicleState:
     do_not_disturb: bool = False
     call_audio_device: str = "car"  # car, phone
     unread_messages: int = 0
+    contacts: List[Contact] = field(default_factory=lambda: [
+        Contact(name="张小明", phone="13800138001", nickname="小明"),
+        Contact(name="李小明", phone="13800138002", nickname="小明"),
+        Contact(name="王小明", phone="13800138003", nickname="明明"),
+        Contact(name="刘德华", phone="13900139001", nickname="华仔"),
+        Contact(name="张学友", phone="13900139002", nickname="学友"),
+        Contact(name="周杰伦", phone="13900139003", nickname="杰伦"),
+    ])
     
     # 灯光系统
     headlights_on: bool = False
@@ -257,6 +282,28 @@ class VehicleStateManager:
     
     def get_battery_level(self) -> float:
         return self.state.battery_level
+
+    def search_contacts(self, query: str) -> List[Contact]:
+        """搜索联系人"""
+        with self._lock:
+            return [c for c in self.state.contacts if c.matches(query)]
+
+    def get_all_contacts(self) -> List[Contact]:
+        """获取所有联系人"""
+        with self._lock:
+            return self.state.contacts.copy()
+
+    def add_contact(self, contact: Contact) -> bool:
+        """添加联系人"""
+        with self._lock:
+            self.state.contacts.append(contact)
+            return True
+
+    def remove_contact(self, phone: str) -> bool:
+        """删除联系人"""
+        with self._lock:
+            self.state.contacts = [c for c in self.state.contacts if c.phone != phone]
+            return True
 
 
 # 全局单例

@@ -368,11 +368,58 @@ class ToolHandlers:
     
     async def make_call(self, contact: str, **kwargs) -> Dict[str, Any]:
         """拨打电话"""
-        self.vehicle.update_values({
-            "call_active": True,
-            "call_contact": contact
-        })
-        return {"success": True, "message": f"正在呼叫 {contact}...", "contact": contact}
+        # 搜索联系人
+        matched_contacts = self.vehicle.search_contacts(contact)
+
+        if not matched_contacts:
+            # 如果没有找到联系人，检查是否是有效电话号码格式
+            if contact.isdigit() and len(contact) >= 10:
+                # 直接拨打电话号码
+                self.vehicle.update_values({
+                    "call_active": True,
+                    "call_contact": contact
+                })
+                return {
+                    "success": True,
+                    "message": f"正在呼叫 {contact}...",
+                    "contact": contact,
+                    "contact_found": False
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": f"通讯录中未找到联系人 '{contact}'，且不是有效的电话号码",
+                    "matched_count": 0
+                }
+
+        elif len(matched_contacts) == 1:
+            # 找到唯一匹配的联系人，直接拨打
+            contact_obj = matched_contacts[0]
+            self.vehicle.update_values({
+                "call_active": True,
+                "call_contact": f"{contact_obj.name} ({contact_obj.phone})"
+            })
+            return {
+                "success": True,
+                "message": f"正在呼叫 {contact_obj.name} ({contact_obj.phone})...",
+                "contact": contact_obj.name,
+                "phone": contact_obj.phone,
+                "matched_count": 1
+            }
+
+        else:
+            # 找到多个匹配的联系人，返回列表让用户选择
+            contact_list = [
+                {"name": c.name, "phone": c.phone, "nickname": c.nickname}
+                for c in matched_contacts
+            ]
+            return {
+                "success": False,
+                "message": f"找到 {len(matched_contacts)} 个匹配的联系人，请明确指定:",
+                "matched_count": len(matched_contacts),
+                "contacts": contact_list,
+                "suggestion": "请使用完整姓名或电话号码来拨打电话"
+            }
     
     async def answer_call(self, **kwargs) -> Dict[str, Any]:
         """接听电话"""
